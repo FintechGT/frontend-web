@@ -1,9 +1,10 @@
 "use client";
+
 import { createContext, useContext, useEffect, useState } from "react";
-import { getMe, type User } from "@/app/services/auth";
+import { getMe, type Me } from "@/app/services/auth";
 
 type AuthCtx = {
-  user: User | null;
+  user: Me | null;
   loading: boolean;
   refresh: () => Promise<void>;
   logout: () => void;
@@ -21,35 +22,37 @@ export function useAuth() {
 }
 
 export default function AppLayoutClient({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<Me | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  async function refresh() {
+  const refresh = async () => {
     try {
       setLoading(true);
       const u = await getMe();
-      setUser(u);
+      setUser(u ?? null);
     } catch {
       setUser(null);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  function logout() {
-    localStorage.removeItem("access_token");
+  const logout = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("access_token");
+      window.location.href = "/login";
+    }
     setUser(null);
-
-    window.location.href = "/login";
-  }
+  };
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("access_token");
     if (!token) {
       setLoading(false);
       return;
     }
-    refresh();
+    void refresh();
   }, []);
 
   return (
