@@ -1,26 +1,33 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Transición suave de colores/bordes */
+* {
+  transition-property: color, background-color, border-color, fill, stroke;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html, body {
+  min-height: 100vh;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Tema por clase (.dark) + colores base */
+body {
+  /* Claro */
+  background-color: #fafafa; /* neutral-50 */
+  color: #111827;            /* neutral-900 */
+
+  /* Oscuro */
+  @media (prefers-color-scheme: dark) {
+    /* sólo por si el usuario prefiere oscuro y tú aún no aplicas .dark */
+    background-color: #0a0a0a; /* neutral-950 */
+    color: #f5f5f5;            /* neutral-100 */
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Cuando actives la clase .dark en <html> (next-themes) */
+:root.dark body {
+  background-color: #0a0a0a; /* neutral-950 */
+  color: #f5f5f5;            /* neutral-100 */
 }

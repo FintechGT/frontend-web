@@ -1,22 +1,25 @@
-"use client";
 import api from "@/lib/api";
 
-interface LoginInput {
-  email: string;
-  password: string;
-}
-interface RegisterInput {
-  nombre: string;
-  email: string;
-  password: string;
-}
+export type RegisterInput = { nombre: string; email: string; password: string };
 
-export async function loginUser(data: LoginInput) {
-  const res = await api.post("/auth/login", data);
+export async function registerUser({ nombre, email, password }: RegisterInput) {
+  const res = await api.post("/auth/register", { username: nombre, email, password });
   return res.data;
 }
 
-export async function registerUser(data: RegisterInput) {
-  const res = await api.post("/auth/register", data);
-  return res.data;
+export async function loginUser(email: string, password: string) {
+  const res = await api.post("/auth/login", { email, password });
+  return res.data as { access_token: string; token_type?: string };
+}
+
+export type Me = {
+  id: number | string;
+  nombre?: string;
+  email: string;
+  rol?: string;
+};
+
+export async function getMe() {
+  const res = await api.get("/auth/me");
+  return res.data as Me;
 }

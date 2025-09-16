@@ -1,10 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useMemo } from "react";
-
-// ⬇️ Quita estos imports si no instalas lucide-react
 import {
   ShieldCheck,
   Zap,
@@ -16,7 +13,6 @@ import {
 } from "lucide-react";
 
 export default function HomePage() {
-  // Pequeña utilidad para fondo de puntos + degradado
   const bgGrid = useMemo(
     () =>
       "before:absolute before:inset-0 before:[background-image:radial-gradient(hsl(0_0%_100%/.06)_1px,transparent_1px)] before:[background-size:18px_18px] before:opacity-60",
@@ -24,78 +20,28 @@ export default function HomePage() {
   );
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
-      {/* NAVBAR */}
-      <header className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60 border-b border-white/10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <Image
-              src="/vercel.svg"
-              alt="Logo"
-              width={28}
-              height={28}
-              className="invert"
-              priority
-            />
-            <span className="font-semibold tracking-tight">
-              Empeños<span className="text-blue-400">GT</span>
-            </span>
-          </Link>
-
-          <nav className="hidden md:flex items-center gap-6 text-sm text-neutral-300">
-            <a href="#features" className="hover:text-white">Características</a>
-            <a href="#how" className="hover:text-white">¿Cómo funciona?</a>
-            <a href="#faq" className="hover:text-white">Preguntas</a>
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="px-4 py-2 rounded-xl border border-white/15 hover:border-white/30 hover:bg-white/5 transition"
-            >
-              Iniciar sesión
-            </Link>
-            <Link
-              href="/register"
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 transition shadow-lg shadow-blue-600/30"
-            >
-              Crear cuenta
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* HERO */}
-      <section
-        className={`relative overflow-hidden ${bgGrid}`}
-        aria-label="Hero"
-      >
-        {/* Gradiente decorativo */}
+    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+      <section className={`relative overflow-hidden ${bgGrid}`} aria-label="Hero">
         <div className="pointer-events-none absolute -inset-[40%] bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,0.35),transparent_60%),radial-gradient(ellipse_at_bottom,rgba(16,185,129,0.20),transparent_60%)]" />
-
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-16 pb-10 lg:pb-20">
           <div className="mx-auto max-w-3xl text-center">
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-neutral-300">
               Plataforma segura · 24/7
             </span>
-
             <h1 className="mt-4 text-4xl sm:text-5xl font-extrabold tracking-tight">
               Sistema de <span className="text-blue-400">Empeños</span> Online
             </h1>
-
             <p className="mt-4 text-neutral-300">
               Solicita préstamos dejando tus artículos en garantía, da
               seguimiento a tus solicitudes y gestiona pagos desde una sola
               plataforma: rápida, segura y transparente.
             </p>
-
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
                 href="/register"
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 transition px-5 py-3 text-sm font-medium shadow-lg shadow-blue-600/25"
               >
                 Comenzar ahora
-                {/* Quita el ícono si no instalas lucide-react */}
                 <ArrowRight className="size-4" />
               </Link>
               <a
@@ -105,8 +51,6 @@ export default function HomePage() {
                 Ver características
               </a>
             </div>
-
-            {/* Métricas */}
             <dl className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 ["+99.9%", "Uptime"],
@@ -127,7 +71,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* FEATURES */}
       <section id="features" className="py-16 lg:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-2xl text-center mb-10">
@@ -136,7 +79,6 @@ export default function HomePage() {
               Hecho para ser simple, potente y confiable desde el día uno.
             </p>
           </div>
-
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <FeatureCard
               icon={<ShieldCheck className="size-5" />}
@@ -172,7 +114,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
       <section id="how" className="py-16 lg:py-20 border-t border-white/10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-2xl text-center mb-10">
@@ -181,14 +122,16 @@ export default function HomePage() {
               Tres pasos claros para obtener tu préstamo con garantía.
             </p>
           </div>
-
           <ol className="grid sm:grid-cols-3 gap-6">
             {[
               ["Regístrate", "Crea tu cuenta y verifica tu identidad."],
               ["Solicita", "Registra el artículo y recibe una pre-evaluación."],
               ["Recibe y paga", "Firma tu contrato, recibe el dinero y gestiona pagos."],
             ].map(([title, desc], i) => (
-              <li key={title} className="relative rounded-2xl border border-white/10 bg-white/5 p-6">
+              <li
+                key={title}
+                className="relative rounded-2xl border border-white/10 bg-white/5 p-6"
+              >
                 <span className="absolute -top-3 left-6 inline-flex items-center justify-center size-8 rounded-full bg-blue-600 text-sm font-bold">
                   {i + 1}
                 </span>
@@ -200,13 +143,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-16 lg:py-20">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
           <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-blue-600/20 to-emerald-500/20 p-8 text-center">
-            <h3 className="text-2xl font-bold">
-              ¿Listo para empezar con EmpeñosGT?
-            </h3>
+            <h3 className="text-2xl font-bold">¿Listo para empezar con EmpeñosGT?</h3>
             <p className="mt-2 text-neutral-200">
               Regístrate en minutos y lleva el control de tus préstamos.
             </p>
@@ -228,18 +168,23 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* FOOTER */}
       <footer className="border-t border-white/10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 text-sm text-neutral-400 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© {new Date().getFullYear()} EmpeñosGT. Todos los derechos reservados.</p>
           <div className="flex items-center gap-5">
-            <a href="#" className="hover:text-neutral-200">Términos</a>
-            <a href="#" className="hover:text-neutral-200">Privacidad</a>
-            <a href="#" className="hover:text-neutral-200">Soporte</a>
+            <a href="#" className="hover:text-neutral-200">
+              Términos
+            </a>
+            <a href="#" className="hover:text-neutral-200">
+              Privacidad
+            </a>
+            <a href="#" className="hover:text-neutral-200">
+              Soporte
+            </a>
           </div>
         </div>
       </footer>
-    </main>
+    </div>
   );
 }
 
