@@ -1,28 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import * as React from "react";
 import { useRouter } from "next/navigation";
 import { loginUser } from "@/app/services/auth";
 
+function getErrorMessage(err: unknown, fallback = "Error al iniciar sesión"): string {
+  if (err instanceof Error) return err.message || fallback;
+  if (typeof err === "string") return err;
+  return fallback;
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [msg, setMsg] = React.useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setMsg(null);
-
     try {
       const data = await loginUser(email, password);
       localStorage.setItem("access_token", data.access_token);
       setMsg("¡Inicio de sesión exitoso! Redirigiendo…");
       router.push("/dashboard");
-    } catch (err: any) {
-      setMsg(err.message || "Error al iniciar sesión");
+    } catch (err) {
+      setMsg(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -30,10 +35,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100 px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6"
-      >
+      <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6">
         <h1 className="text-xl font-semibold">Iniciar sesión</h1>
 
         <label className="block">
@@ -41,7 +43,7 @@ export default function LoginPage() {
           <input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
             required
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
           />
@@ -52,17 +54,13 @@ export default function LoginPage() {
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
             required
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
           />
         </label>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60"
-        >
+        <button type="submit" disabled={loading} className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60">
           {loading ? "Ingresando…" : "Entrar"}
         </button>
 

@@ -1,53 +1,50 @@
 "use client";
 
-import { useState } from "react";
+import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
+import { registerUser, RegisterInput } from "@/app/services/auth";
+
+function parseError(data: unknown, fallback = "No se pudo crear la cuenta"): string {
+  if (!data) return fallback;
+  if (typeof data === "string") return data;
+  if (typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    return (obj.detail as string) || (obj.message as string) || fallback;
+  }
+  return fallback;
+}
 
 export default function RegisterPage() {
-  const [nombre, setNombre] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPass, setShowPass] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const [nombre, setNombre] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [showPass, setShowPass] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
 
-  function parseError(data: any, fallback = "No se pudo crear la cuenta") {
-    const detail = data?.detail ?? data?.message ?? data;
-    if (typeof detail === "string") return detail;
-    if (Array.isArray(detail)) {
-      
-      const msgs = detail.map((d) => d?.msg || d?.message || JSON.stringify(d)).filter(Boolean);
-      return msgs.join("\n") || fallback;
-    }
-    if (detail && typeof detail === "object") {
-      return detail.message || detail.error || JSON.stringify(detail);
-    }
-    return fallback;
-  }
-
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL!;
-      const res = await fetch(`${base}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: nombre, email, password }),
-      });
+      const payload: RegisterInput = { nombre, email, password };
+      const res = await registerUser(payload);
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(parseError(data));
+      if (!res || res.error) {
+        throw new Error(parseError(res));
       }
 
       toast.success("Cuenta creada. Ahora inicia sesión.");
       setNombre("");
       setEmail("");
       setPassword("");
-    } catch (err: any) {
-      toast.error(err?.message || "Error al registrar");
+
+      // ✅ Redirige a login
+      router.push("/login");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al registrar";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -55,10 +52,7 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-svh grid place-items-center px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm mx-auto space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-lg"
-      >
+      <form onSubmit={onSubmit} className="w-full max-w-sm mx-auto space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-lg">
         <h1 className="text-2xl font-bold text-center">Crear cuenta</h1>
 
         <label className="block">
@@ -67,7 +61,7 @@ export default function RegisterPage() {
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
             placeholder="Tu nombre"
             value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNombre(e.target.value)}
             required
           />
         </label>
@@ -79,7 +73,7 @@ export default function RegisterPage() {
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
             placeholder="tucorreo@dominio.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
             required
           />
         </label>
@@ -92,7 +86,7 @@ export default function RegisterPage() {
               className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 pr-10 outline-none focus:border-blue-500"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               required
             />
             <button
@@ -106,10 +100,7 @@ export default function RegisterPage() {
           </div>
         </label>
 
-        <button
-          disabled={loading}
-          className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition"
-        >
+        <button disabled={loading} className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition">
           {loading ? "Creando…" : "Registrarme"}
         </button>
 
