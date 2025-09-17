@@ -2,8 +2,8 @@
 "use client";
 
 import * as React from "react";
-import { getMe, Me } from "@/app/services/auth";
-import { listMisSolicitudes, Solicitud } from "@/app/services/solicitudes";
+import { getMe, type Me } from "@/app/services/auth";
+import { listMisSolicitudes, type Solicitud } from "@/app/services/solicitudes";
 
 // Estructuras de apoyo para render
 type Reciente = { id: string; tipo: string; estado: string; fecha: string };
@@ -27,6 +27,7 @@ export default function DashboardPage() {
       try {
         setLoading(true);
         setErr(null);
+        // getMe() ahora puede funcionar sin pasar token en cliente
         const [u, sols] = await Promise.all([getMe(), listMisSolicitudes()]);
         if (!alive) return;
         setMe(u);
@@ -63,7 +64,7 @@ export default function DashboardPage() {
       const proximoVenc =
         fechasVenc.length > 0 ? new Date(fechasVenc[0]).toLocaleDateString() : "—";
 
-      const pagosRealizados = 0; // Cuando tengas /pagos lo calculas aquí
+      const pagosRealizados = 0; // Cuando exista /pagos, calcular aquí
 
       const recientes: Reciente[] = [...solicitudes]
         .sort((a, b) => {
