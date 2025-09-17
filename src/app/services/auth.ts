@@ -23,3 +23,8 @@ export async function getMe() {
   const res = await api.get("/auth/me");
   return res.data as Me;
 }
+export async function loginWithGoogle(id_token: string) {
+  const res = await api.post("/auth/google", { id_token });
+  return res.data as { access_token: string; token_type?: string };
+}
+

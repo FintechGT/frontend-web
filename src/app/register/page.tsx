@@ -2,19 +2,23 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
-import { registerUser, RegisterInput } from "@/app/services/auth";
+import { toast } from "sonner";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
+import { registerUser, type RegisterInput, loginWithGoogle } from "@/app/services/auth";
 
 function parseError(data: unknown, fallback = "No se pudo crear la cuenta"): string {
   if (!data) return fallback;
   if (typeof data === "string") return data;
+  if (data instanceof Error) return data.message || fallback;
   if (typeof data === "object") {
     const obj = data as Record<string, unknown>;
     return (obj.detail as string) || (obj.message as string) || fallback;
   }
   return fallback;
 }
+
+const ALLOWED_DOMAIN = "gmail.com"; // solo correos de Google
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -24,36 +28,52 @@ export default function RegisterPage() {
   const [showPass, setShowPass] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
+  const isAllowedEmail = (e: string) => e.trim().toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!isAllowedEmail(email)) {
+      toast.error(`Solo se permiten correos @${ALLOWED_DOMAIN}`);
+      return;
+    }
     setLoading(true);
     try {
-      const payload: RegisterInput = { nombre, email, password };
+      const payload: RegisterInput = { nombre: nombre.trim(), email: email.trim().toLowerCase(), password };
       const res = await registerUser(payload);
-
-      if (!res || res.error) {
-        throw new Error(parseError(res));
-      }
-
+      if (!res || (res as any)?.error) throw new Error(parseError(res));
       toast.success("Cuenta creada. Ahora inicia sesión.");
       setNombre("");
       setEmail("");
       setPassword("");
-
-      // ✅ Redirige a login
       router.push("/login");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al registrar";
-      toast.error(msg);
+      toast.error(parseError(err, "Error al registrar"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onGoogleSuccess(id_token: string) {
+    try {
+      setLoading(true);
+      const data = await loginWithGoogle(id_token); // crea o loguea en el backend
+      localStorage.setItem("access_token", data.access_token);
+      router.push("/dashboard");
+    } catch (err) {
+      toast.error(parseError(err, "No se pudo registrar con Google"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-svh grid place-items-center px-4">
+    <main className="min-h-svh grid place-items-center bg-neutral-950 text-neutral-100 px-4">
       <form onSubmit={onSubmit} className="w-full max-w-sm mx-auto space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-lg">
         <h1 className="text-2xl font-bold text-center">Crear cuenta</h1>
+
+        <p className="text-xs text-neutral-400 text-center">
+          Solo se permiten cuentas <span className="text-neutral-200 font-medium">@{ALLOWED_DOMAIN}</span>
+        </p>
 
         <label className="block">
           <span className="text-sm text-neutral-300">Nombre</span>
@@ -71,7 +91,7 @@ export default function RegisterPage() {
           <input
             type="email"
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
-            placeholder="tucorreo@dominio.com"
+            placeholder={`tucorreo@${ALLOWED_DOMAIN}`}
             value={email}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
             required
@@ -88,6 +108,7 @@ export default function RegisterPage() {
               value={password}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               required
+              minLength={6}
             />
             <button
               type="button"
@@ -100,9 +121,25 @@ export default function RegisterPage() {
           </div>
         </label>
 
-        <button disabled={loading} className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition">
+        <button
+          disabled={loading}
+          className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition"
+        >
           {loading ? "Creando…" : "Registrarme"}
         </button>
+
+        {/* separador */}
+        <div className="flex items-center gap-3 my-2">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-xs text-neutral-400">o continúa con</span>
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
+
+        {/* Registro con Google (crea/entra de una vez) */}
+        <GoogleSignInButton
+          onSuccess={onGoogleSuccess}
+          onError={() => toast.error("No se pudo registrar con Google")}
+        />
 
         <p className="text-xs text-neutral-400 text-center">
           ¿Ya tienes cuenta?{" "}
