@@ -5,6 +5,11 @@ export type RegisterInput = {
   password: string;
 };
 
+export type LoginInput = {
+  email: string;
+  password: string;
+};
+
 export type UserResponse = {
   ID_Usuario: number;
   Nombre: string;
@@ -74,6 +79,15 @@ export async function registerUser(body: RegisterInput): Promise<UserResponse> {
   return parseResponse<UserResponse>(res);
 }
 
+export async function loginUser(body: LoginInput): Promise<TokenResponse> {
+  const res = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return parseResponse<TokenResponse>(res);
+}
+
 export async function loginWithGoogle(id_token: string): Promise<TokenResponse> {
   const res = await fetch(`${API_URL}/auth/google`, {
     method: "POST",
@@ -83,7 +97,7 @@ export async function loginWithGoogle(id_token: string): Promise<TokenResponse> 
   return parseResponse<TokenResponse>(res);
 }
 
-/** Lee token desde localStorage o cookie (solo cliente). */
+/** Helpers de token para cliente */
 export function getTokenFromClient(): string | null {
   if (typeof window === "undefined") return null;
   const fromLs = window.localStorage.getItem("access_token");
@@ -92,11 +106,15 @@ export function getTokenFromClient(): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-/**
- * Obtiene el perfil. Si no pasas token:
- *  - En cliente: lo intenta leer de storage/cookie.
- *  - En servidor: lanza error.
- */
+export function saveToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("access_token", token);
+  // cookie opcional (1 día) por si quieres SSR luego
+  document.cookie = `access_token=${encodeURIComponent(
+    token
+  )}; Path=/; Max-Age=86400; SameSite=Lax`;
+}
+
 export async function getMe(token?: string): Promise<Me> {
   let t = token;
   if (!t) {
@@ -116,7 +134,6 @@ export async function getMe(token?: string): Promise<Me> {
   return mapMe(raw);
 }
 
-/** Azúcar para cliente: usa storage/cookie y llama a /auth/me. */
 export async function getMeFromClient(): Promise<Me> {
   return getMe();
 }
