@@ -5,20 +5,23 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
-import { registerUser, type RegisterInput, loginWithGoogle } from "@/app/services/auth";
+import {
+  registerUser,
+  type RegisterInput,
+  loginWithGoogle,
+} from "@/app/services/auth";
 
 function parseError(data: unknown, fallback = "No se pudo crear la cuenta"): string {
-  if (!data) return fallback;
-  if (typeof data === "string") return data;
   if (data instanceof Error) return data.message || fallback;
-  if (typeof data === "object") {
+  if (typeof data === "string") return data;
+  if (typeof data === "object" && data !== null) {
     const obj = data as Record<string, unknown>;
     return (obj.detail as string) || (obj.message as string) || fallback;
   }
   return fallback;
 }
 
-const ALLOWED_DOMAIN = "gmail.com"; // solo correos de Google
+const ALLOWED_DOMAIN = "gmail.com";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -28,7 +31,8 @@ export default function RegisterPage() {
   const [showPass, setShowPass] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
-  const isAllowedEmail = (e: string) => e.trim().toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
+  const isAllowedEmail = (e: string) =>
+    e.trim().toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -38,9 +42,12 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const payload: RegisterInput = { nombre: nombre.trim(), email: email.trim().toLowerCase(), password };
-      const res = await registerUser(payload);
-      if (!res || (res as any)?.error) throw new Error(parseError(res));
+      const payload: RegisterInput = {
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+      };
+      await registerUser(payload);
       toast.success("Cuenta creada. Ahora inicia sesión.");
       setNombre("");
       setEmail("");
@@ -56,7 +63,7 @@ export default function RegisterPage() {
   async function onGoogleSuccess(id_token: string) {
     try {
       setLoading(true);
-      const data = await loginWithGoogle(id_token); // crea o loguea en el backend
+      const data = await loginWithGoogle(id_token);
       localStorage.setItem("access_token", data.access_token);
       router.push("/dashboard");
     } catch (err) {
@@ -68,11 +75,15 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-svh grid place-items-center bg-neutral-950 text-neutral-100 px-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm mx-auto space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-lg">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-sm mx-auto space-y-4 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-lg"
+      >
         <h1 className="text-2xl font-bold text-center">Crear cuenta</h1>
 
         <p className="text-xs text-neutral-400 text-center">
-          Solo se permiten cuentas <span className="text-neutral-200 font-medium">@{ALLOWED_DOMAIN}</span>
+          Solo se permiten cuentas{" "}
+          <span className="text-neutral-200 font-medium">@{ALLOWED_DOMAIN}</span>
         </p>
 
         <label className="block">
@@ -81,7 +92,7 @@ export default function RegisterPage() {
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
             placeholder="Tu nombre"
             value={nombre}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNombre(e.target.value)}
+            onChange={(e) => setNombre(e.target.value)}
             required
           />
         </label>
@@ -93,7 +104,7 @@ export default function RegisterPage() {
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
             placeholder={`tucorreo@${ALLOWED_DOMAIN}`}
             value={email}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
         </label>
@@ -106,7 +117,7 @@ export default function RegisterPage() {
               className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 pr-10 outline-none focus:border-blue-500"
               placeholder="••••••••"
               value={password}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
             />
@@ -128,17 +139,15 @@ export default function RegisterPage() {
           {loading ? "Creando…" : "Registrarme"}
         </button>
 
-        {/* separador */}
         <div className="flex items-center gap-3 my-2">
           <div className="h-px flex-1 bg-white/10" />
           <span className="text-xs text-neutral-400">o continúa con</span>
           <div className="h-px flex-1 bg-white/10" />
         </div>
 
-        {/* Registro con Google (crea/entra de una vez) */}
         <GoogleSignInButton
           onSuccess={onGoogleSuccess}
-          onError={() => toast.error("No se pudo registrar con Google")}
+          onError={(e) => toast.error(parseError(e, "No se pudo registrar con Google"))}
         />
 
         <p className="text-xs text-neutral-400 text-center">
