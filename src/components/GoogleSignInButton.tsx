@@ -1,84 +1,67 @@
+// src/components/GoogleSignInButton.tsx
 "use client";
 
-import { useEffect } from "react";
-
-/** Tipos mínimos para Google One Tap (GSI) */
-type GoogleCredentialResponse = {
-  clientId: string;
-  credential: string;           // <-- el ID token
-  select_by: string;
-};
-
-type Gsi = {
-  accounts: {
-    id: {
-      initialize: (opts: {
-        client_id: string | undefined;
-        callback: (response: GoogleCredentialResponse) => void;
-        auto_select?: boolean;
-        cancel_on_tap_outside?: boolean;
-        use_fedcm_for_prompt?: boolean;
-      }) => void;
-      renderButton: (
-        parent: HTMLElement | null,
-        opts: {
-          theme?: "outline" | "filled" | "filled_black" | "standard";
-          size?: "large" | "medium" | "small";
-          shape?: "rectangular" | "pill" | "circle" | "square";
-          width?: number | string;
-          text?: "signin_with" | "signup_with" | "continue_with" | "signin";
-          logo_alignment?: "left" | "center";
-        }
-      ) => void;
-      prompt: (listener?: (res: unknown) => void) => void;
-    };
-  };
-};
+import * as React from "react";
 
 declare global {
   interface Window {
-    google?: Gsi;
+    google?: any;
   }
 }
 
 type Props = {
-  onSuccess?: (token: string) => void;
+  onSuccess: (id_token: string) => void;
   onError?: (err: unknown) => void;
+  text?: "signin_with" | "continue_with" | "signup_with";
+  theme?: "outline" | "filled_blue" | "filled_black";
+  size?: "large" | "medium" | "small";
 };
 
-export default function GoogleSignInButton({ onSuccess, onError }: Props) {
-  useEffect(() => {
-    const ensureScript = () =>
-      new Promise<void>((resolve) => {
-        if (window.google?.accounts?.id) return resolve();
-        const s = document.createElement("script");
-        s.src = "https://accounts.google.com/gsi/client";
-        s.async = true;
-        s.defer = true;
-        s.onload = () => resolve();
-        document.head.appendChild(s);
-      });
+export default function GoogleSignInButton({
+  onSuccess,
+  onError,
+  text = "signin_with",
+  theme = "filled_blue",
+  size = "large",
+}: Props) {
+  const divRef = React.useRef<HTMLDivElement>(null);
 
-    ensureScript().then(() => {
-      window.google?.accounts.id.initialize({
-        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
-        callback: (resp) => {
-          try {
-            const idToken = resp.credential;
-            if (!idToken) throw new Error("Sin token de Google");
-            onSuccess?.(idToken);
-          } catch (e) {
-            onError?.(e);
-          }
+  React.useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    // Carga script GIS
+    const id = "google-identity-services";
+    if (!document.getElementById(id)) {
+      const s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.async = true;
+      s.id = id;
+      s.onload = initialize;
+      s.onerror = () => onError?.(new Error("No se pudo cargar Google SDK"));
+      document.head.appendChild(s);
+    } else {
+      initialize();
+    }
+
+    function initialize() {
+      if (!window.google || !divRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response: { credential: string }) => {
+          if (response?.credential) onSuccess(response.credential);
+          else onError?.(new Error("Sin credencial de Google"));
         },
       });
+      window.google.accounts.id.renderButton(divRef.current, {
+        type: "standard",
+        theme,
+        size,
+        text,
+        shape: "pill",
+      });
+    }
+  }, [onSuccess, onError, text, theme, size]);
 
-      window.google?.accounts.id.renderButton(
-        document.getElementById("gsi-btn"),
-        { theme: "outline", size: "large", shape: "pill", width: 320 }
-      );
-    });
-  }, [onSuccess, onError]);
-
-  return <div id="gsi-btn" className="w-full flex justify-center" />;
+  return <div ref={divRef} />;
 }

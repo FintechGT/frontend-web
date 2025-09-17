@@ -11,6 +11,7 @@ import {
   loginWithGoogle,
 } from "@/app/services/auth";
 
+/** Parser de errores de fetch/axios */
 function parseError(data: unknown, fallback = "No se pudo crear la cuenta"): string {
   if (data instanceof Error) return data.message || fallback;
   if (typeof data === "string") return data;
@@ -21,7 +22,18 @@ function parseError(data: unknown, fallback = "No se pudo crear la cuenta"): str
   return fallback;
 }
 
-const ALLOWED_DOMAIN = "gmail.com";
+/** Validación de dominios permitidos desde ENV */
+function isDomainAllowed(email: string): boolean {
+  const val = process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS || "";
+  const allowed = val
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!allowed.length) return true; // si no hay restricción, acepta todos
+  const domain = email.split("@").pop()?.toLowerCase();
+  return !!domain && allowed.includes(domain);
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -31,15 +43,14 @@ export default function RegisterPage() {
   const [showPass, setShowPass] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
-  const isAllowedEmail = (e: string) =>
-    e.trim().toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`);
-
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!isAllowedEmail(email)) {
-      toast.error(`Solo se permiten correos @${ALLOWED_DOMAIN}`);
+
+    if (!isDomainAllowed(email)) {
+      toast.error("Dominio de correo no permitido.");
       return;
     }
+
     setLoading(true);
     try {
       const payload: RegisterInput = {
@@ -65,6 +76,7 @@ export default function RegisterPage() {
       setLoading(true);
       const data = await loginWithGoogle(id_token);
       localStorage.setItem("access_token", data.access_token);
+      toast.success("Cuenta creada con Google");
       router.push("/dashboard");
     } catch (err) {
       toast.error(parseError(err, "No se pudo registrar con Google"));
@@ -81,10 +93,14 @@ export default function RegisterPage() {
       >
         <h1 className="text-2xl font-bold text-center">Crear cuenta</h1>
 
-        <p className="text-xs text-neutral-400 text-center">
-          Solo se permiten cuentas{" "}
-          <span className="text-neutral-200 font-medium">@{ALLOWED_DOMAIN}</span>
-        </p>
+        {process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS && (
+          <p className="text-xs text-neutral-400 text-center">
+            Solo se permiten cuentas de:{" "}
+            <span className="text-neutral-200 font-medium">
+              {process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS}
+            </span>
+          </p>
+        )}
 
         <label className="block">
           <span className="text-sm text-neutral-300">Nombre</span>
@@ -102,7 +118,7 @@ export default function RegisterPage() {
           <input
             type="email"
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
-            placeholder={`tucorreo@${ALLOWED_DOMAIN}`}
+            placeholder="tucorreo@dominio.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required

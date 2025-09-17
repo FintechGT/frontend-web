@@ -1,4 +1,6 @@
 // src/app/services/auth.ts
+
+/** ====== Tipos ====== */
 export type RegisterInput = {
   nombre: string;
   email: string;
@@ -30,9 +32,14 @@ export type Me = {
   estadoActivo?: boolean;
 };
 
+// Alias por si en algún sitio importas `User`
+export type User = Me;
+
+/** ====== Config ====== */
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
+/** ====== Utils ====== */
 async function parseResponse<T>(res: Response): Promise<T> {
   const text = await res.text();
   let data: unknown;
@@ -70,6 +77,7 @@ function mapMe(raw: unknown): Me {
   };
 }
 
+/** ====== Auth API ====== */
 export async function registerUser(body: RegisterInput): Promise<UserResponse> {
   const res = await fetch(`${API_URL}/auth/register`, {
     method: "POST",
@@ -97,7 +105,7 @@ export async function loginWithGoogle(id_token: string): Promise<TokenResponse> 
   return parseResponse<TokenResponse>(res);
 }
 
-/** Helpers de token para cliente */
+/** ====== Helpers de token (cliente) ====== */
 export function getTokenFromClient(): string | null {
   if (typeof window === "undefined") return null;
   const fromLs = window.localStorage.getItem("access_token");
@@ -106,15 +114,23 @@ export function getTokenFromClient(): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-export function saveToken(token: string) {
+export function saveToken(token: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("access_token", token);
-  // cookie opcional (1 día) por si quieres SSR luego
+  // cookie opcional (1 día) — útil si más adelante haces SSR
   document.cookie = `access_token=${encodeURIComponent(
     token
   )}; Path=/; Max-Age=86400; SameSite=Lax`;
 }
 
+export function clearToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("access_token");
+  document.cookie =
+    "access_token=; Path=/; Max-Age=0; SameSite=Lax";
+}
+
+/** ====== Perfil ====== */
 export async function getMe(token?: string): Promise<Me> {
   let t = token;
   if (!t) {

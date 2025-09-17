@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
-import { loginUser, loginWithGoogle, saveToken } from "@/app/services/auth";
+import { loginUser, loginWithGoogle, saveToken, type LoginInput } from "@/app/services/auth";
 
 function getErrorMessage(err: unknown, fallback = "Error al iniciar sesión"): string {
   if (err instanceof Error) return err.message || fallback;
@@ -24,10 +24,11 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { access_token } = await loginUser({
+      const payload: LoginInput = {
         email: email.trim().toLowerCase(),
         password,
-      });
+      };
+      const { access_token } = await loginUser(payload);
       saveToken(access_token);
       toast.success("Sesión iniciada");
       router.push("/dashboard");
@@ -43,6 +44,7 @@ export default function LoginPage() {
       setLoading(true);
       const { access_token } = await loginWithGoogle(id_token);
       saveToken(access_token);
+      toast.success("Sesión iniciada con Google");
       router.push("/dashboard");
     } catch (err) {
       toast.error(getErrorMessage(err, "No se pudo iniciar con Google"));
@@ -64,7 +66,7 @@ export default function LoginPage() {
           <input
             type="email"
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
-            placeholder="tucorreo@gmail.com"
+            placeholder="tucorreo@dominio.com"
             value={email}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
             required
@@ -101,7 +103,6 @@ export default function LoginPage() {
           {loading ? "Entrando…" : "Entrar"}
         </button>
 
-        {/* separador */}
         <div className="flex items-center gap-3 my-2">
           <div className="h-px flex-1 bg-white/10" />
           <span className="text-xs text-neutral-400">o continúa con</span>
