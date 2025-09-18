@@ -1,11 +1,37 @@
-// src/components/GoogleSignInButton.tsx
 "use client";
 
 import * as React from "react";
 
+
+type GoogleCredentialResponse = { credential: string };
+
+type GoogleIdApi = {
+  initialize(options: {
+    client_id: string;
+    callback: (response: GoogleCredentialResponse) => void;
+  }): void;
+  renderButton(
+    parent: HTMLElement,
+    options: {
+      type?: "standard" | "icon";
+      theme?: "outline" | "filled_blue" | "filled_black";
+      size?: "large" | "medium" | "small";
+      text?: "signin_with" | "signup_with" | "continue_with" | "signin";
+      shape?: "rectangular" | "pill" | "circle" | "square";
+      logo_alignment?: "left" | "center";
+      width?: string | number;
+    }
+  ): void;
+  prompt?(callback?: () => void): void;
+};
+
+type GoogleApi = {
+  accounts: { id: GoogleIdApi };
+};
+
 declare global {
   interface Window {
-    google?: any;
+    google?: GoogleApi;
   }
 }
 
@@ -30,25 +56,12 @@ export default function GoogleSignInButton({
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) return;
 
-    // Carga script GIS
-    const id = "google-identity-services";
-    if (!document.getElementById(id)) {
-      const s = document.createElement("script");
-      s.src = "https://accounts.google.com/gsi/client";
-      s.async = true;
-      s.id = id;
-      s.onload = initialize;
-      s.onerror = () => onError?.(new Error("No se pudo cargar Google SDK"));
-      document.head.appendChild(s);
-    } else {
-      initialize();
-    }
-
-    function initialize() {
+    const SCRIPT_ID = "google-identity-services";
+    const initialize = () => {
       if (!window.google || !divRef.current) return;
       window.google.accounts.id.initialize({
         client_id: clientId,
-        callback: (response: { credential: string }) => {
+        callback: (response) => {
           if (response?.credential) onSuccess(response.credential);
           else onError?.(new Error("Sin credencial de Google"));
         },
@@ -60,6 +73,18 @@ export default function GoogleSignInButton({
         text,
         shape: "pill",
       });
+    };
+
+    if (!document.getElementById(SCRIPT_ID)) {
+      const s = document.createElement("script");
+      s.id = SCRIPT_ID;
+      s.src = "https://accounts.google.com/gsi/client";
+      s.async = true;
+      s.onload = initialize;
+      s.onerror = () => onError?.(new Error("No se pudo cargar Google SDK"));
+      document.head.appendChild(s);
+    } else {
+      initialize();
     }
   }, [onSuccess, onError, text, theme, size]);
 
