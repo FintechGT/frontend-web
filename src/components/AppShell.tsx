@@ -1,18 +1,20 @@
+// src/components/AppShell.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Home, CreditCard, FileText, Settings, LogOut } from "lucide-react";
+import { Menu, X, Home, FileText, CreditCard, Settings } from "lucide-react";
+import UserMenu from "@/components/ui/UserMenu";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = React.useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = React.useState(false);
 
-
-  useEffect(() => {
+  // Pequeño guard de sesión por token en cliente
+  React.useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     if (!token) {
       router.replace("/login");
@@ -36,12 +38,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/configuracion", label: "Configuración", icon: <Settings className="h-4 w-4" /> },
   ];
 
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(href + "/");
+
+  const currentLabel =
+    links.find((l) => isActive(l.href))?.label ?? "Panel";
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       {/* Topbar */}
-      <header className="fixed top-0 inset-x-0 z-50 h-14 border-b border-white/10 bg-neutral-950/70 backdrop-blur">
+      <header className="fixed top-0 inset-x-0 z-50 h-14 border-b border-white/10 bg-neutral-950/70 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60">
         <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
+            {/* Drawer trigger (móvil) */}
             <button
               className="inline-flex items-center justify-center rounded-lg border border-white/10 p-2 hover:bg-white/5 lg:hidden"
               onClick={() => setOpen(true)}
@@ -49,35 +58,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             >
               <Menu className="h-5 w-5" />
             </button>
+
+            {/* Brand */}
             <Link href="/dashboard" className="font-semibold">
               Empeños<span className="text-blue-400">GT</span>
             </Link>
+
+            {/* Breadcrumb simple */}
             <span className="ml-3 hidden text-sm text-neutral-400 sm:inline">
-              {links.find(l => l.href === pathname)?.label ?? "Panel"}
+              {currentLabel}
             </span>
           </div>
 
+          {/* Perfil (modal) */}
           <div className="flex items-center gap-2">
-            {/* Placeholder de usuario */}
-            <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
-                <div className="text-sm font-medium">Usuario</div>
-                <div className="text-xs text-neutral-400">mi@correo.com</div>
-              </div>
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-sm">
-                U
-              </div>
-            </div>
-            <button
-              className="ml-2 inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5"
-              onClick={() => {
-                localStorage.removeItem("access_token");
-                router.replace("/login");
-              }}
-            >
-              <LogOut className="h-4 w-4" />
-              Salir
-            </button>
+            <UserMenu />
           </div>
         </div>
       </header>
@@ -88,14 +83,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] lg:block">
           <nav className="space-y-1">
             {links.map(({ href, label, icon }) => {
-              const active = pathname === href;
+              const active = isActive(href);
               return (
                 <Link
                   key={href}
                   href={href}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                    active ? "bg-white/10 text-white" : "text-neutral-300 hover:bg-white/5"
-                  }`}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition
+                    ${active ? "bg-white/10 text-white" : "text-neutral-300 hover:bg-white/5"}`}
                 >
                   {icon}
                   {label}
@@ -106,7 +101,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Contenido */}
-        <main className="min-h-[calc(100vh-4rem)] py-6 lg:pl-6">{children}</main>
+        <main className="min-h-[calc(100vh-4rem)] py-6 lg:pl-6">
+          {children}
+        </main>
       </div>
 
       {/* Drawer móvil */}
@@ -131,15 +128,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <nav className="space-y-1">
               {links.map(({ href, label, icon }) => {
-                const active = pathname === href;
+                const active = isActive(href);
                 return (
                   <Link
                     key={href}
                     href={href}
                     onClick={() => setOpen(false)}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                      active ? "bg-white/10 text-white" : "text-neutral-300 hover:bg-white/5"
-                    }`}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition
+                      ${active ? "bg-white/10 text-white" : "text-neutral-300 hover:bg-white/5"}`}
                   >
                     {icon}
                     {label}
