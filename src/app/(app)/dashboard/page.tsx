@@ -4,46 +4,36 @@ import * as React from "react";
 import Link from "next/link";
 import { listMisSolicitudes, type Solicitud } from "@/app/services/solicitudes";
 
-/* ===== Helpers ===== */
-function formatDate(d?: string | null) {
+/** Utilidad segura para mensajes de error */
+function getErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : "Error desconocido";
+}
+
+function formatDate(d?: string | null): string {
   if (!d) return "—";
-  const iso = d.slice(0, 10);
-  // Evita diferencias de locale entre SSR/CSR
-  return iso;
+  const date = new Date(d);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleDateString();
 }
 
-function getProximoVencimiento(items: Solicitud[]) {
-  const fechas = items
-    .map((s) => s.fecha_vencimiento || s.created_at || s.fecha_envio || null)
-    .filter(Boolean) as string[];
-
-  if (!fechas.length) return "—";
-  const min = fechas.sort((a, b) => (a < b ? -1 : 1))[0];
-  return formatDate(min);
-}
-
-/* ===== Page ===== */
 export default function DashboardPage() {
-  const [items, setItems] = React.useState<Solicitud[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [items, setItems] = React.useState<Solicitud[]>([]);
 
   React.useEffect(() => {
     let alive = true;
     (async () => {
       try {
+        setLoading(true);
         setError(null);
         const data = await listMisSolicitudes();
         if (!alive) return;
-        // Ordena por fecha desc (created_at || fecha_envio)
-        const sorted = (data ?? []).slice().sort((a, b) => {
-          const da = (a.created_at || a.fecha_envio || "")!;
-          const db = (b.created_at || b.fecha_envio || "")!;
-          return da < db ? 1 : da > db ? -1 : 0;
-        });
-        setItems(sorted);
-      } catch (e: any) {
-        if (alive) setError(e?.message ?? "No se pudo cargar");
+        setItems(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (!alive) return;
+        setError(getErrMsg(e));
       } finally {
         if (alive) setLoading(false);
       }
@@ -53,39 +43,70 @@ export default function DashboardPage() {
     };
   }, []);
 
+
   const solicitudesActivas = items.length;
-  const montoPendiente = "Q 0"; // Si tu API devuelve montos, cámbialo aquí.
-  const proximoVenc = getProximoVencimiento(items);
-  const pagosRealizados = 0; // Igual: ajústalo cuando tengas ese dato.
+  const montoPendienteQ = 0; 
+  const pagosRealizados = 0; 
+
+
+  const proximoVenc = React.useMemo(() => {
+    const fechas = items
+      .map((s) => s.fecha_vencimiento)
+      .filter((f): f is string => Boolean(f));
+    const min = fechas.length
+      ? fechas.reduce((a, b) => (new Date(a) < new Date(b) ? a : b))
+      : null;
+    return formatDate(min);
+  }, [items]);
+
+
+  const recientes = React.useMemo(() => {
+    const sorted = [...items].sort(
+      (a, b) => b.id_solicitud - a.id_solicitud
+    );
+    return sorted.slice(0, 4);
+  }, [items]);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Inicio</h1>
-        <p className="text-sm text-neutral-400">
+        <h1 className="text-2xl font-semibold">Inicio</h1>
+        <p className="mt-1 text-sm text-neutral-400">
           Resumen de tu actividad y accesos rápidos.
         </p>
       </div>
 
       {/* KPIs */}
-      <section
-        aria-label="Indicadores"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
-      >
-        <Kpi title="Solicitudes activas" value={solicitudesActivas} />
-        <Kpi title="Monto pendiente" value={montoPendiente} />
-        <Kpi title="Próximo vencimiento" value={proximoVenc} />
-        <Kpi title="Pagos realizados" value={pagosRealizados} />
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard title="Solicitudes activas" value={solicitudesActivas} />
+        <KpiCard
+          title="Monto pendiente"
+          value={
+            <span>
+              Q <span className="tabular-nums">{montoPendienteQ}</span>
+            </span>
+          }
+        />
+        <KpiCard title="Próximo vencimiento" value={proximoVenc} />
+        <KpiCard title="Pagos realizados" value={pagosRealizados} />
       </section>
 
+      {/* Estado de carga / error */}
+      {loading && (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-neutral-300">
+          Cargando información…
+        </div>
+      )}
+      {error && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Actividad reciente */}
-      <section
-        aria-label="Actividad reciente"
-        className="rounded-2xl border border-white/10 bg-white/5"
-      >
-        <div className="flex items-center justify-between px-4 py-3">
-          <h2 className="text-base font-semibold">Actividad reciente</h2>
+      <section className="rounded-2xl border border-white/10 bg-white/5">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <h2 className="text-sm font-medium">Actividad reciente</h2>
           <Link
             href="/dashboard/solicitudes"
             className="text-sm text-blue-400 hover:underline"
@@ -94,68 +115,71 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {/* Contenido */}
-        <div className="divide-y divide-white/10 text-sm">
-          {/* Cabecera de tabla */}
-          <header className="grid grid-cols-12 gap-2 px-4 py-2 text-neutral-400">
-            <div className="col-span-5 sm:col-span-4">Solicitud</div>
-            <div className="col-span-2">Código</div>
-            <div className="col-span-3 sm:col-span-3">Estado</div>
-            <div className="col-span-2 text-right sm:text-left sm:col-span-3">
-              Fecha
-            </div>
-          </header>
-
-          {/* Estados */}
-          {loading && (
-            <div className="px-4 py-6 text-neutral-400">Cargando…</div>
-          )}
-          {error && !loading && (
-            <div className="px-4 py-6 text-red-400">{error}</div>
-          )}
-          {!loading && !error && items.length === 0 && (
-            <div className="px-4 py-6 text-neutral-400">Sin movimientos.</div>
-          )}
-
-          {/* Filas */}
-          {!loading &&
-            !error &&
-            items.slice(0, 5).map((s) => (
-              <Row key={s.id_solicitud} s={s} />
-            ))}
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-left text-neutral-400">
+              <tr className="border-b border-white/10">
+                <th className="px-4 py-3">Solicitud</th>
+                <th className="px-4 py-3">Código</th>
+                <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!loading && recientes.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-neutral-400" colSpan={4}>
+                    No hay actividad reciente.
+                  </td>
+                </tr>
+              )}
+              {recientes.map((s) => (
+                <tr
+                  key={s.id_solicitud}
+                  className="border-t border-white/10 hover:bg-white/5"
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="grid size-8 place-items-center rounded-lg bg-white/10 text-xs">
+                        #
+                      </div>
+                      <span className="font-medium">
+                        #{s.id_solicitud}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="tabular-nums">
+                      {s.codigo ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 capitalize">
+                    {s.estado ?? "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatDate(s.created_at ?? s.fecha_envio)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
   );
 }
 
-/* ===== UI bits ===== */
-function Kpi({ title, value }: { title: string; value: React.ReactNode }) {
+function KpiCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: React.ReactNode;
+}) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-5">
       <div className="text-sm text-neutral-400">{title}</div>
       <div className="mt-2 text-2xl font-semibold">{value}</div>
     </div>
-  );
-}
-
-function Row({ s }: { s: Solicitud }) {
-  const fecha = formatDate(s.created_at || s.fecha_envio || s.fecha_vencimiento);
-  return (
-    <article className="grid grid-cols-12 gap-2 px-4 py-3 hover:bg-white/5">
-      <div className="col-span-5 sm:col-span-4">
-        <Link
-          href={`/dashboard/solicitudes/${s.id_solicitud}`}
-          className="font-medium hover:underline"
-        >
-          #{s.id_solicitud}
-        </Link>
-      </div>
-      <div className="col-span-2">{s.codigo ?? "—"}</div>
-      <div className="col-span-3 sm:col-span-3">{s.estado ?? "—"}</div>
-      <div className="col-span-2 text-right sm:text-left sm:col-span-3">
-        {fecha}
-      </div>
-    </article>
   );
 }

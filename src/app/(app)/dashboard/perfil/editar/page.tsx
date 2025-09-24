@@ -1,166 +1,142 @@
+// src/app/(app)/dashboard/perfil/editar/page.tsx
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuth } from "@/app/AppLayoutClient";
 import api from "@/lib/api";
 
-type Perfil = {
-  nombre: string | null;
-  correo: string;
-  telefono?: string | null;
-  direccion?: string | null;
+type UpdateMeInput = {
+  nombre?: string;
+  telefono?: string;
+  direccion?: string;
 };
 
-type UpdateMeInput = Partial<{
-  nombre: string | null;
-  telefono: string | null;
-  direccion: string | null;
-}>;
+function getErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : "Error desconocido";
+}
 
 export default function EditarPerfilPage() {
   const router = useRouter();
+  const { user, refresh } = useAuth();
 
-  // estado inicial desde la API
-  const [original, setOriginal] = React.useState<Perfil | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  // campos controlados (correo solo lectura)
+  const [nombre, setNombre] = React.useState<string>(user?.nombre ?? "");
+  const [telefono, setTelefono] = React.useState<string>("");
+  const [direccion, setDireccion] = React.useState<string>("");
+  const [submitting, setSubmitting] = React.useState<boolean>(false);
 
-  // campos editables
-  const [nombre, setNombre] = React.useState("");
-  const [telefono, setTelefono] = React.useState("");
-  const [direccion, setDireccion] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
-
+  // si cambia el user desde el contexto, sincronizamos el nombre inicial
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const { data } = await api.get<Perfil>("/usuarios/me");
-        if (!alive) return;
-        setOriginal(data);
-        setNombre(data.nombre ?? "");
-        setTelefono(data.telefono ?? "");
-        setDireccion(data.direccion ?? "");
-      } catch {
-        toast.error("No se pudo cargar tu perfil");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+    if (user?.nombre) setNombre(user.nombre);
+  }, [user?.nombre]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!original) return;
-
-    // construir payload solo con cambios (PATCH parcial)
-    const payload: UpdateMeInput = {};
-    const nTrim = nombre.trim();
-    if (nTrim !== (original.nombre ?? "")) payload.nombre = nTrim || null;
-
-    if (telefono !== (original.telefono ?? "")) {
-      payload.telefono = telefono.trim() ? telefono.trim() : null;
-    }
-    if (direccion !== (original.direccion ?? "")) {
-      payload.direccion = direccion.trim() ? direccion.trim() : null;
-    }
-
-    if (Object.keys(payload).length === 0) {
-      toast.info("No hay cambios para guardar");
-      return;
-    }
-
+    setSubmitting(true);
     try {
-      setSaving(true);
+      // Solo mandamos campos que el usuario quiso editar
+      const payload: UpdateMeInput = {};
+      const n = nombre.trim();
+      const t = telefono.trim();
+      const d = direccion.trim();
+
+      if (n && n !== (user?.nombre ?? "")) payload.nombre = n;
+      if (t) payload.telefono = t;
+      if (d) payload.direccion = d;
+
+      if (Object.keys(payload).length === 0) {
+        toast.info("No hiciste cambios");
+        setSubmitting(false);
+        return;
+      }
+
       await api.patch("/usuarios/me", payload);
       toast.success("Perfil actualizado");
+      await refresh();
       router.push("/dashboard/perfil");
-    } catch (err: any) {
-      toast.error(err?.message ?? "No se pudo actualizar");
+    } catch (err) {
+      toast.error(getErrMsg(err));
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="grid min-h-[50vh] place-items-center">
-        <div className="animate-pulse text-sm text-neutral-400">Cargando…</div>
-      </div>
-    );
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Editar perfil</h1>
+    <div className="mx-auto max-w-3xl">
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold">Editar perfil</h1>
         <p className="mt-1 text-sm text-neutral-400">
-          Actualiza tu nombre, teléfono y dirección. El correo no se puede
-          modificar.
+          Actualiza tu nombre, teléfono y dirección. El correo no se puede modificar.
         </p>
-      </div>
+      </header>
 
       <form
         onSubmit={onSubmit}
-        className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5"
+        className="rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6"
       >
-        <label className="block">
-          <span className="text-sm text-neutral-300">Nombre</span>
-          <input
-            className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            // <— ya NO es required
-            placeholder="Opcional"
-          />
-        </label>
+        <div className="grid gap-4">
+          <label className="block">
+            <span className="text-sm text-neutral-300">Nombre</span>
+            <input
+              className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Tu nombre"
+            />
+          </label>
 
-        <label className="block">
-          <span className="text-sm text-neutral-300">Correo (solo lectura)</span>
-          <input
-            className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 opacity-70"
-            value={original?.correo ?? ""}
-            readOnly
-          />
-        </label>
+          <label className="block">
+            <span className="text-sm text-neutral-300">Correo (solo lectura)</span>
+            <input
+              className="mt-1 w-full cursor-not-allowed rounded-xl bg-neutral-900/60 border border-white/10 px-3 py-2 text-neutral-400"
+              value={user?.correo ?? "—"}
+              readOnly
+              disabled
+            />
+          </label>
 
-        <label className="block">
-          <span className="text-sm text-neutral-300">Teléfono</span>
-          <input
-            className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
-            placeholder="Opcional"
-          />
-        </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm text-neutral-300">Teléfono</span>
+              <input
+                className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+                placeholder="Opcional"
+                inputMode="tel"
+              />
+            </label>
 
-        <label className="block">
-          <span className="text-sm text-neutral-300">Dirección</span>
-          <input
-            className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
-            value={direccion}
-            onChange={(e) => setDireccion(e.target.value)}
-            placeholder="Opcional"
-          />
-        </label>
+            <label className="block">
+              <span className="text-sm text-neutral-300">Dirección</span>
+              <input
+                className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
+                value={direccion}
+                onChange={(e) => setDireccion(e.target.value)}
+                placeholder="Opcional"
+              />
+            </label>
+          </div>
+        </div>
 
-        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-          <a
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-60"
+          >
+            {submitting ? "Guardando…" : "Guardar cambios"}
+          </button>
+
+          <Link
             href="/dashboard/perfil"
-            className="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/5 text-center"
+            className="inline-flex items-center justify-center rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/5"
           >
             Cancelar
-          </a>
-          <button
-            disabled={saving}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-60"
-          >
-            {saving ? "Guardando…" : "Guardar cambios"}
-          </button>
+          </Link>
         </div>
       </form>
     </div>
