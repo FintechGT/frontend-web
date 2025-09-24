@@ -22,11 +22,7 @@ function formatDate(iso?: string | null): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? "—"
-    : d.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      });
+    : d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
 export default function SolicitudDetallePage() {
@@ -34,7 +30,7 @@ export default function SolicitudDetallePage() {
   const router = useRouter();
   const id = Number(params?.id);
 
-  const [loading, setLoading] = React.useState<boolean>(true);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [s, setS] = React.useState<Solicitud | null>(null);
 
@@ -52,8 +48,7 @@ export default function SolicitudDetallePage() {
         const res = await api.get<Solicitud>(`/solicitudes-completa/${id}`);
         if (alive) setS(res.data);
       } catch (e) {
-        if (alive)
-          setError(e instanceof Error ? e.message : "No se pudo cargar");
+        if (alive) setError(e instanceof Error ? e.message : "No se pudo cargar");
       } finally {
         if (alive) setLoading(false);
       }
@@ -73,19 +68,13 @@ export default function SolicitudDetallePage() {
           <ArrowLeft className="size-4" />
           Volver
         </button>
-        <h1 className="text-xl font-semibold">
-          Solicitud {Number.isFinite(id) ? `#${id}` : ""}
-        </h1>
+        <h1 className="text-xl font-semibold">Solicitud {Number.isFinite(id) ? `#${id}` : ""}</h1>
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">
-          Cargando…
-        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">Cargando…</div>
       ) : error ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm">
-          {error}
-        </div>
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm">{error}</div>
       ) : !s ? (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">
           No se encontró la solicitud.
@@ -109,9 +98,7 @@ export default function SolicitudDetallePage() {
               </div>
               <div>
                 <dt className="text-neutral-400">Dirección</dt>
-                <dd className="mt-0.5 break-words">
-                  {s.direccion_entrega ?? "—"}
-                </dd>
+                <dd className="mt-0.5 break-words">{s.direccion_entrega ?? "—"}</dd>
               </div>
               <div>
                 <dt className="text-neutral-400">Fecha envío</dt>
@@ -124,22 +111,19 @@ export default function SolicitudDetallePage() {
             </dl>
           </div>
 
-          {/* Artículos */}
-          <section className="space-y-3">
+          {/* Artículos con galería */}
+          <section className="space-y-4">
             <h2 className="text-lg font-semibold">Artículos</h2>
+
             {s.articulos?.length ? (
-              <ul className="grid gap-3 sm:grid-cols-2">
+              <ul className="grid gap-4">
                 {s.articulos.map((a) => (
-                  <li
-                    key={a.id_articulo}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                  >
+                  <li key={a.id_articulo} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-medium">{a.descripcion}</div>
-                      <div className="text-sm text-neutral-400">
-                        {a.condicion}
-                      </div>
+                      <div className="text-sm text-neutral-400">{a.condicion}</div>
                     </div>
+
                     <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <dt className="text-neutral-400">Tipo</dt>
@@ -147,19 +131,43 @@ export default function SolicitudDetallePage() {
                       </div>
                       <div>
                         <dt className="text-neutral-400">Valor estimado</dt>
-                        <dd className="mt-0.5">
-                          {formatMoney(a.valor_estimado)}
-                        </dd>
-                      </div>
-                      <div className="col-span-2">
-                        <dt className="text-neutral-400">Fotos</dt>
-                        <dd className="mt-0.5">
-                          {a.fotos?.length
-                            ? `${a.fotos.length} foto(s)`
-                            : "—"}
-                        </dd>
+                        <dd className="mt-0.5">{formatMoney(a.valor_estimado)}</dd>
                       </div>
                     </dl>
+
+                    {/* Galería de fotos */}
+                    <div className="mt-3">
+                      <div className="text-sm text-neutral-400 mb-2">
+                        Fotos ({a.fotos?.length ?? 0})
+                      </div>
+                      {a.fotos?.length ? (
+                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                          {a.fotos
+                            .sort((x, y) => (x.orden ?? 0) - (y.orden ?? 0))
+                            .map((f) => (
+                              <a
+                                key={`${a.id_articulo}-${f.url}`}
+                                href={f.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block"
+                                title="Abrir en pestaña nueva"
+                              >
+                                <img
+                                  src={f.url}
+                                  alt="Foto de artículo"
+                                  loading="lazy"
+                                  className="h-28 w-full rounded-xl object-cover"
+                                />
+                              </a>
+                            ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-400">
+                          Sin fotos
+                        </div>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -170,7 +178,6 @@ export default function SolicitudDetallePage() {
             )}
           </section>
 
-          {/* CTA opcional */}
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
               href="/dashboard/solicitudes"
@@ -178,7 +185,6 @@ export default function SolicitudDetallePage() {
             >
               Ver todas
             </Link>
-            
           </div>
         </>
       )}

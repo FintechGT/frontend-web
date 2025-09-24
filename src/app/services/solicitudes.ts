@@ -1,3 +1,4 @@
+// src/app/services/solicitudes.ts
 import api from "@/lib/api";
 
 export type Foto = {
@@ -27,12 +28,33 @@ export type Solicitud = {
   articulos: Articulo[];
 };
 
-// Lista “mis solicitudes completas”
+// ===== existentes =====
 export async function listMisSolicitudes(): Promise<Solicitud[]> {
   const res = await api.get("/solicitudes-completa");
   return res.data as Solicitud[];
 }
+
 export async function getSolicitudCompleta(id: number): Promise<Solicitud> {
   const res = await api.get(`/solicitudes-completa/${id}`);
+  return res.data as Solicitud;
+}
+
+// ===== nuevo: crear solicitud completa =====
+export type NuevaFoto = { url: string; orden?: number | null };
+export type NuevoArticulo = {
+  id_tipo: number;
+  descripcion: string;
+  valor_estimado: number;
+  condicion: string;
+  fotos: NuevaFoto[];
+};
+export type NuevaSolicitudPayload = {
+  metodo_entrega: "domicilio" | "oficina";
+  direccion_entrega?: string;
+  articulos: NuevoArticulo[];
+};
+
+export async function crearSolicitudCompleta(payload: NuevaSolicitudPayload): Promise<Solicitud> {
+  const res = await api.post("/solicitudes-completa", payload);
   return res.data as Solicitud;
 }
