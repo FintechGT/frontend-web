@@ -32,3 +32,7 @@ export async function listMisSolicitudes(): Promise<Solicitud[]> {
   const res = await api.get("/solicitudes-completa");
   return res.data as Solicitud[];
 }
+export async function getSolicitudCompleta(id: number): Promise<Solicitud> {
+  const res = await api.get(`/solicitudes-completa/${id}`);
+  return res.data as Solicitud;
+}
