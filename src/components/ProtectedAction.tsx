@@ -10,9 +10,7 @@ type Props = {
   children: ReactNode;
 };
 
-/**
- * Renderiza children solo si el usuario tiene el/los permiso(s)
- */
+
 export default function ProtectedAction({ permiso, fallback = null, children }: Props) {
   const { can } = useAuth();
 
