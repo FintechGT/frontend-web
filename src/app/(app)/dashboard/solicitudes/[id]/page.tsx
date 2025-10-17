@@ -1,325 +1,218 @@
-// src/app/(app)/dashboard/usuarios/[id]/page.tsx
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-  getUsuarioDetalle,
-  listarRolesDisponibles,
-  listarRolesDeUsuario,
-  asignarRolAUsuario,
-  quitarRolDeUsuario,
-  getActividadUsuario,
-  type RolItem,
-  type ActividadItem,
-} from "@/app/services/adminUsuarios";
-import {
-  ArrowLeft,
-  BadgeCheck,
-  Loader2,
-  Shield,
-  Trash2,
-  Plus,
-  Search,
-  Calendar,
-  Mail,
-} from "lucide-react";
+import api from "@/lib/api";
+import { usePermiso } from "@/hooks/usePermiso";
+import { type Solicitud, getArticulosSolicitud } from "@/app/services/solicitudes";
+import { ArrowLeft, Shield } from "lucide-react";
 
-export default function UsuarioShowPage() {
-  const router = useRouter();
+function formatMoney(n: number | undefined): string {
+  if (typeof n !== "number" || Number.isNaN(n)) return "—";
+  return n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "GTQ",
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatDate(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+export default function SolicitudDetallePage() {
   const params = useParams<{ id: string }>();
-  const userId = Number(params?.id);
+  const router = useRouter();
+  const id = Number(params?.id);
 
-  const [tab, setTab] = React.useState<"perfil" | "roles" | "actividad">("perfil");
+  // <-- AGREGADO: chequear permisos de admin para mostrar botón
+  const esAdmin = usePermiso(["ADMIN_SOLICITUDES_LISTAR", "valuacion.aprobar"]);
 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-
-  const [perfil, setPerfil] = React.useState<{
-    id: number;
-    nombre: string;
-    correo: string;
-    telefono?: string | null;
-    direccion?: string | null;
-    verificado?: boolean;
-    estado_activo: boolean;
-    created_at?: string | null;
-    updated_at?: string | null;
-  } | null>(null);
-
-  // Roles
-  const [rolesActuales, setRolesActuales] = React.useState<string[]>([]);
-  const [rolesDisp, setRolesDisp] = React.useState<RolItem[]>([]);
-  const [filter, setFilter] = React.useState("");
-
-  // Actividad
-  const [actLoading, setActLoading] = React.useState(false);
-  const [actividad, setActividad] = React.useState<ActividadItem[]>([]);
+  const [s, setS] = React.useState<Solicitud | null>(null);
 
   React.useEffect(() => {
+    if (!Number.isFinite(id)) {
+      setError("ID inválido");
+      setLoading(false);
+      return;
+    }
     let alive = true;
     (async () => {
       try {
         setLoading(true);
         setError(null);
-        const [u, ract, rdisp] = await Promise.all([
-          getUsuarioDetalle(userId),
-          listarRolesDeUsuario(userId),
-          listarRolesDisponibles(),
-        ]);
-        if (!alive) return;
-        setPerfil(u);
-        setRolesActuales(ract);
-        setRolesDisp(rdisp);
-      } catch (e: any) {
-        if (!alive) return;
-        setError(e?.message ?? "No se pudo cargar el usuario");
+
+        // 1) Trae la solicitud "completa"
+        const res = await api.get<Solicitud>(`/solicitudes-completa/${id}`);
+        let solicitud = res.data;
+
+        // 2) Si el backend no envía artículos (o viene vacío), intenta cargar por endpoint dedicado
+        if (!solicitud.articulos || solicitud.articulos.length === 0) {
+          try {
+            const arts = await getArticulosSolicitud(id);
+            solicitud = { ...solicitud, articulos: arts };
+          } catch {
+            // silencioso
+          }
+        }
+
+        if (alive) setS(solicitud);
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : "No se pudo cargar");
       } finally {
-        if (!alive) return;
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [userId]);
-
-  async function loadActividad() {
-    try {
-      setActLoading(true);
-      const r = await getActividadUsuario(userId, { limit: 50, offset: 0 });
-      setActividad(r.items ?? []);
-    } finally {
-      setActLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    if (tab === "actividad") loadActividad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
-
-  async function onAsignar(id_rol: number) {
-    await asignarRolAUsuario(userId, id_rol);
-    const r = await listarRolesDeUsuario(userId);
-    setRolesActuales(r);
-  }
-
-  async function onQuitar(rolNombre: string) {
-    const rol = rolesDisp.find((r) => r.nombre.toUpperCase() === rolNombre.toUpperCase());
-    if (!rol) return alert("No se encontró el rol en el catálogo");
-    await quitarRolDeUsuario(userId, rol.id_rol);
-    const r = await listarRolesDeUsuario(userId);
-    setRolesActuales(r);
-  }
-
-  const filteredDisp = React.useMemo(() => {
-    const f = filter.trim().toLowerCase();
-    if (!f) return rolesDisp;
-    return rolesDisp.filter((r) => r.nombre.toLowerCase().includes(f));
-  }, [filter, rolesDisp]);
+  }, [id]);
 
   return (
-    <div className="p-4 mx-auto max-w-5xl space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={() => router.push("/dashboard/usuarios")}
-          className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
+          onClick={() => router.push("/dashboard/solicitudes")}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
         >
           <ArrowLeft className="size-4" />
           Volver
         </button>
-        <div className="text-sm text-neutral-400">ID: {Number.isFinite(userId) ? userId : "—"}</div>
+        <h1 className="text-xl font-semibold">Solicitud {Number.isFinite(id) ? `#${id}` : ""}</h1>
       </div>
 
       {loading ? (
-        <div className="text-neutral-300 flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" />
-          Cargando usuario…
-        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">Cargando…</div>
       ) : error ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-300">
-          {error}
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm">{error}</div>
+      ) : !s ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">
+          No se encontró la solicitud.
         </div>
-      ) : !perfil ? (
-        <div className="text-neutral-300">No se encontró el usuario.</div>
       ) : (
         <>
-          {/* Header del usuario */}
-          <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-semibold truncate">{perfil.nombre}</h1>
-                  {perfil.verificado && (
-                    <span title="Verificado">
-                      <BadgeCheck className="size-4 text-sky-400" aria-label="Verificado" role="img" />
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1 text-sm text-neutral-400 flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-1">
-                    <Mail className="size-3.5" /> {perfil.correo}
-                  </span>
-                  {perfil.created_at && (
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="size-3.5" />
-                      Alta: {new Date(perfil.created_at).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
+          {/* Resumen */}
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <dl className="grid gap-4 sm:grid-cols-2 text-sm">
+              <div>
+                <dt className="text-neutral-400">Código</dt>
+                <dd className="mt-0.5">{s.codigo ?? "—"}</dd>
               </div>
-              <span
-                className={`rounded px-2 py-1 text-xs ${
-                  perfil.estado_activo ? "bg-emerald-600" : "bg-neutral-700"
-                }`}
-              >
-                {perfil.estado_activo ? "Activo" : "Inactivo"}
-              </span>
-            </div>
+              <div>
+                <dt className="text-neutral-400">Estado</dt>
+                <dd className="mt-0.5 capitalize">{s.estado}</dd>
+              </div>
+              <div>
+                <dt className="text-neutral-400">Método entrega</dt>
+                <dd className="mt-0.5 capitalize">{s.metodo_entrega ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-neutral-400">Dirección</dt>
+                <dd className="mt-0.5 break-words">{s.direccion_entrega ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-neutral-400">Fecha envío</dt>
+                <dd className="mt-0.5">{formatDate(s.fecha_envio)}</dd>
+              </div>
+              <div>
+                <dt className="text-neutral-400">Vence</dt>
+                <dd className="mt-0.5">{formatDate(s.fecha_vencimiento)}</dd>
+              </div>
+            </dl>
           </div>
 
-          {/* Tabs */}
-          <div className="border-b border-white/10">
-            <nav className="flex gap-3">
-              {(["perfil", "roles", "actividad"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`px-3 py-2 text-sm border-b-2 -mb-px ${
-                    tab === t
-                      ? "border-white text-white"
-                      : "border-transparent text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  {t === "perfil" ? "Perfil" : t === "roles" ? "Roles" : "Actividad"}
-                </button>
-              ))}
-            </nav>
-          </div>
+          {/* Artículos con galería */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Artículos</h2>
 
-          {/* Contenido de cada pestaña */}
-          {tab === "perfil" && (
-            <section className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-white/10 p-4">
-                <div className="text-sm text-neutral-400">Teléfono</div>
-                <div className="mt-1">{perfil.telefono ?? "—"}</div>
-              </div>
-              <div className="rounded-xl border border-white/10 p-4">
-                <div className="text-sm text-neutral-400">Dirección</div>
-                <div className="mt-1 break-words">{perfil.direccion ?? "—"}</div>
-              </div>
-            </section>
-          )}
+            {s.articulos?.length ? (
+              <ul className="grid gap-4">
+                {s.articulos.map((a) => (
+                  <li key={a.id_articulo} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-medium">{a.descripcion}</div>
+                      <div className="text-sm text-neutral-400 capitalize">{a.condicion}</div>
+                    </div>
 
-          {tab === "roles" && (
-            <section className="grid gap-4 lg:grid-cols-2">
-              {/* Roles actuales */}
-              <div className="rounded-xl border border-white/10 p-4">
-                <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                  <Shield className="size-4" />
-                  Roles asignados
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {rolesActuales.length ? (
-                    rolesActuales.map((r) => (
-                      <span
-                        key={r}
-                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs"
-                      >
-                        {r}
-                        <button
-                          onClick={() => onQuitar(r)}
-                          className="ml-1 hover:text-rose-400"
-                          title="Quitar"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-neutral-400 text-sm">Sin roles</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Asignar rol */}
-              <div className="rounded-xl border border-white/10 p-4 space-y-2">
-                <div className="text-sm font-medium">Asignar rol</div>
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 size-4 text-neutral-400" />
-                  <input
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filtra por nombre…"
-                    className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-8 pr-3 text-sm outline-none"
-                  />
-                </div>
-                <div className="max-h-72 overflow-auto rounded-lg border border-white/10">
-                  <ul className="divide-y divide-white/5">
-                    {filteredDisp.map((r) => {
-                      const ya = rolesActuales
-                        .map((x) => x.toUpperCase())
-                        .includes(r.nombre.toUpperCase());
-                      return (
-                        <li key={r.id_rol} className="flex items-center justify-between p-2 text-sm">
-                          <div>{r.nombre}</div>
-                          <button
-                            disabled={ya}
-                            onClick={() => onAsignar(r.id_rol)}
-                            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                              ya
-                                ? "bg-neutral-700 text-neutral-300"
-                                : "bg-sky-600 hover:bg-sky-500 text-white"
-                            }`}
-                          >
-                            <Plus className="size-3.5" /> Asignar
-                          </button>
-                        </li>
-                      );
-                    })}
-                    {filteredDisp.length === 0 && (
-                      <li className="p-3 text-sm text-neutral-400">No hay roles para mostrar.</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {tab === "actividad" && (
-            <section className="rounded-xl border border-white/10 p-4">
-              {actLoading ? (
-                <div className="text-neutral-300 flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin" />
-                  Cargando actividad…
-                </div>
-              ) : (
-                <ul className="space-y-3">
-                  {actividad.map((a) => (
-                    <li key={a.id_auditoria} className="rounded-lg border border-white/10 p-3">
-                      <div className="text-xs text-neutral-400">
-                        {new Date(a.fecha_hora).toLocaleString()} · {a.modulo} · {a.accion}
+                    <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <dt className="text-neutral-400">Tipo</dt>
+                        <dd className="mt-0.5">#{a.id_tipo}</dd>
                       </div>
-                      {a.detalle && <div className="mt-1 text-sm">{a.detalle}</div>}
-                      {(a.old_values || a.new_values) && (
-                        <details className="mt-2 text-xs">
-                          <summary className="cursor-pointer text-neutral-300">Ver cambios</summary>
-                          <pre className="mt-1 whitespace-pre-wrap break-all text-neutral-300">
-                            {a.old_values ? `OLD: ${a.old_values}\n` : ""}
-                            {a.new_values ? `NEW: ${a.new_values}` : ""}
-                          </pre>
-                        </details>
+                      <div>
+                        <dt className="text-neutral-400">Valor estimado</dt>
+                        <dd className="mt-0.5">{formatMoney(a.valor_estimado)}</dd>
+                      </div>
+                    </dl>
+
+                    {/* Galería de fotos */}
+                    <div className="mt-3">
+                      <div className="mb-2 text-sm text-neutral-400">
+                        Fotos ({a.fotos?.length ?? 0})
+                      </div>
+                      {a.fotos?.length ? (
+                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                          {a.fotos
+                            .sort((x, y) => (x.orden ?? 0) - (y.orden ?? 0))
+                            .map((f) => (
+                              <a
+                                key={`${a.id_articulo}-${f.url}`}
+                                href={f.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block"
+                                title="Abrir en pestaña nueva"
+                              >
+                                <img
+                                  src={f.url}
+                                  alt="Foto de artículo"
+                                  loading="lazy"
+                                  className="h-28 w-full rounded-xl object-cover"
+                                />
+                              </a>
+                            ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-400">
+                          Sin fotos
+                        </div>
                       )}
-                    </li>
-                  ))}
-                  {actividad.length === 0 && (
-                    <li className="text-neutral-400 text-sm">Sin actividad reciente.</li>
-                  )}
-                </ul>
-              )}
-            </section>
-          )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-neutral-300">
+                Esta solicitud no tiene artículos.
+              </div>
+            )}
+          </section>
+
+          {/* Botones de acción */}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/dashboard/solicitudes"
+              className="inline-flex items-center justify-center rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/5"
+            >
+              Ver todas
+            </Link>
+            {esAdmin && (
+              <Link
+                href={`/dashboard/solicitudes/${id}/admin`}
+                className="inline-flex items-center gap-2 justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500"
+              >
+                <Shield className="size-4" />
+                Vista Administrador
+              </Link>
+            )}
+          </div>
         </>
       )}
     </div>

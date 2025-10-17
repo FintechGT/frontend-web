@@ -42,7 +42,7 @@ function compareRecientes(a: Solicitud, b: Solicitud): number {
 
 /* ===================== Page ===================== */
 export default function DashboardPage() {
-  // Si tu hook retorna boolean, está bien; si retorna {allowed, loading}, ajusta abajo.
+  // Hook de permisos: se evalúa SIEMPRE antes de cualquier return.
   const esAdmin = usePermiso(["ADMIN_SOLICITUDES_LISTAR", "usuarios.view", "valuacion.aprobar"]);
 
   const [loading, setLoading] = React.useState<boolean>(true);
@@ -75,6 +75,28 @@ export default function DashboardPage() {
     };
   }, [esAdmin]);
 
+  // ====== Hooks derivados (SIEMPRE antes de cualquier return) ======
+  // Estos se ejecutan incluso si luego devolvemos la vista admin o loading/error,
+  // cumpliendo la Regla de Hooks (mismo orden en todos los renders).
+  const proximoVenc = React.useMemo(() => {
+    const fechas = items.map((s) => s.fecha_vencimiento).filter((f): f is string => Boolean(f));
+    const min = fechas.length
+      ? fechas.reduce((a, b) => (new Date(a) < new Date(b) ? a : b))
+      : null;
+    return formatDate(min);
+  }, [items]);
+
+  const recientes = React.useMemo(() => {
+    const sorted = [...items].sort(compareRecientes);
+    return sorted.slice(0, 4);
+  }, [items]);
+
+  // KPIs usuario (no hooks, solo variables)
+  const solicitudesActivas = items.length;
+  const montoPendienteQ = 0; // TODO: suma real desde API
+  const pagosRealizados = 0; // TODO: desde API
+
+  // ====== Returns condicionales (después de TODOS los hooks) ======
   if (loading) {
     return (
       <div className="space-y-6">
@@ -203,23 +225,6 @@ export default function DashboardPage() {
   }
 
   /* ========== VISTA USUARIO ========== */
-  const solicitudesActivas = items.length;
-  const montoPendienteQ = 0; // TODO: suma real desde API
-  const pagosRealizados = 0; // TODO: desde API
-
-  const proximoVenc = React.useMemo(() => {
-    const fechas = items.map((s) => s.fecha_vencimiento).filter((f): f is string => Boolean(f));
-    const min = fechas.length
-      ? fechas.reduce((a, b) => (new Date(a) < new Date(b) ? a : b))
-      : null;
-    return formatDate(min);
-  }, [items]);
-
-  const recientes = React.useMemo(() => {
-    const sorted = [...items].sort(compareRecientes);
-    return sorted.slice(0, 4);
-  }, [items]);
-
   return (
     <div className="space-y-6">
       <div>

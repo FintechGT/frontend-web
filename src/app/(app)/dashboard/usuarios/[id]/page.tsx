@@ -1,4 +1,3 @@
-// src/app/(app)/dashboard/usuarios/[id]/page.tsx
 "use client";
 
 import * as React from "react";
@@ -13,6 +12,7 @@ import {
   type RolItem,
   type ActividadItem,
 } from "@/app/services/adminUsuarios";
+import Badge from "@/components/ui/Badge";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -23,7 +23,12 @@ import {
   Search,
   Calendar,
   Mail,
+  Phone,
+  MapPin,
+  Clock,
+  User,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function UsuarioShowPage() {
   const router = useRouter();
@@ -31,10 +36,10 @@ export default function UsuarioShowPage() {
   const userId = Number(params?.id);
 
   const [tab, setTab] = React.useState<"perfil" | "roles" | "actividad">("perfil");
-
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Perfil
   const [perfil, setPerfil] = React.useState<{
     id: number;
     nombre: string;
@@ -59,6 +64,12 @@ export default function UsuarioShowPage() {
   React.useEffect(() => {
     let alive = true;
     (async () => {
+      if (!Number.isFinite(userId)) {
+        setError("ID de usuario inválido");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
@@ -74,6 +85,7 @@ export default function UsuarioShowPage() {
       } catch (e: any) {
         if (!alive) return;
         setError(e?.message ?? "No se pudo cargar el usuario");
+        toast.error("Error al cargar usuario");
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -89,28 +101,44 @@ export default function UsuarioShowPage() {
       setActLoading(true);
       const r = await getActividadUsuario(userId, { limit: 50, offset: 0 });
       setActividad(r.items ?? []);
+    } catch (e: any) {
+      toast.error("No se pudo cargar la actividad");
     } finally {
       setActLoading(false);
     }
   }
 
   React.useEffect(() => {
-    if (tab === "actividad") loadActividad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (tab === "actividad" && actividad.length === 0) {
+      loadActividad();
+    }
   }, [tab]);
 
-  async function onAsignar(id_rol: number) {
-    await asignarRolAUsuario(userId, id_rol);
-    const r = await listarRolesDeUsuario(userId);
-    setRolesActuales(r);
+  async function onAsignar(id_rol: number, nombre: string) {
+    try {
+      await asignarRolAUsuario(userId, id_rol);
+      const r = await listarRolesDeUsuario(userId);
+      setRolesActuales(r);
+      toast.success(`Rol "${nombre}" asignado`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo asignar el rol");
+    }
   }
 
   async function onQuitar(rolNombre: string) {
+    if (!confirm(`¿Quitar rol "${rolNombre}"?`)) return;
+
     const rol = rolesDisp.find((r) => r.nombre.toUpperCase() === rolNombre.toUpperCase());
-    if (!rol) return alert("No se encontró el rol en el catálogo");
-    await quitarRolDeUsuario(userId, rol.id_rol);
-    const r = await listarRolesDeUsuario(userId);
-    setRolesActuales(r);
+    if (!rol) return;
+
+    try {
+      await quitarRolDeUsuario(userId, rol.id_rol);
+      const r = await listarRolesDeUsuario(userId);
+      setRolesActuales(r);
+      toast.success(`Rol "${rolNombre}" removido`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo quitar el rol");
+    }
   }
 
   const filteredDisp = React.useMemo(() => {
@@ -120,205 +148,341 @@ export default function UsuarioShowPage() {
   }, [filter, rolesDisp]);
 
   return (
-    <div className="p-4 mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push("/dashboard/usuarios")}
-          className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/5"
         >
           <ArrowLeft className="size-4" />
           Volver
         </button>
-        <div className="text-sm text-neutral-400">ID: {Number.isFinite(userId) ? userId : "—"}</div>
+        <Badge variant="default">ID: {userId}</Badge>
       </div>
 
       {loading ? (
-        <div className="text-neutral-300 flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" />
-          Cargando usuario…
+        <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-12">
+          <div className="text-center">
+            <Loader2 className="mx-auto size-8 animate-spin text-blue-400" />
+            <p className="mt-3 text-sm text-neutral-400">Cargando usuario...</p>
+          </div>
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-300">
-          {error}
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
+          <div className="font-medium text-red-400">Error al cargar</div>
+          <div className="mt-1 text-sm text-red-300">{error}</div>
         </div>
       ) : !perfil ? (
-        <div className="text-neutral-300">No se encontró el usuario.</div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
+          <p className="text-neutral-300">No se encontró el usuario.</p>
+        </div>
       ) : (
         <>
-          {/* Header del usuario */}
-          <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-semibold truncate">{perfil.nombre}</h1>
-                  {perfil.verificado && (
-                    <span title="Verificado">
-                      <BadgeCheck className="size-4 text-sky-400" aria-label="Verificado" role="img" />
-                    </span>
-                  )}
+          {/* Card Perfil */}
+          <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-4">
+                {/* Avatar */}
+                <div className="grid size-20 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 text-2xl font-bold text-blue-400">
+                  {perfil.nombre
+                    .split(" ")
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
                 </div>
-                <div className="mt-1 text-sm text-neutral-400 flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-1">
-                    <Mail className="size-3.5" /> {perfil.correo}
-                  </span>
-                  {perfil.created_at && (
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="size-3.5" />
-                      Alta: {new Date(perfil.created_at).toLocaleDateString()}
-                    </span>
-                  )}
+
+                {/* Info */}
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-2xl font-bold">{perfil.nombre}</h1>
+                    {perfil.verificado && (
+                      <Badge variant="success">
+                        <BadgeCheck className="size-3" />
+                        Verificado
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-neutral-300">
+                      <Mail className="size-4 text-neutral-400" />
+                      {perfil.correo}
+                    </div>
+                    {perfil.telefono && (
+                      <div className="flex items-center gap-2 text-sm text-neutral-300">
+                        <Phone className="size-4 text-neutral-400" />
+                        {perfil.telefono}
+                      </div>
+                    )}
+                    {perfil.direccion && (
+                      <div className="flex items-center gap-2 text-sm text-neutral-300">
+                        <MapPin className="size-4 text-neutral-400" />
+                        {perfil.direccion}
+                      </div>
+                    )}
+                    {perfil.created_at && (
+                      <div className="flex items-center gap-2 text-sm text-neutral-400">
+                        <Calendar className="size-4" />
+                        Miembro desde{" "}
+                        {new Date(perfil.created_at).toLocaleDateString("es", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-              <span
-                className={`rounded px-2 py-1 text-xs ${
-                  perfil.estado_activo ? "bg-emerald-600" : "bg-neutral-700"
-                }`}
-              >
+
+              {/* Estado */}
+              <Badge variant={perfil.estado_activo ? "success" : "error"}>
+                <div
+                  className={`size-2 rounded-full ${
+                    perfil.estado_activo ? "bg-emerald-400" : "bg-red-400"
+                  }`}
+                />
                 {perfil.estado_activo ? "Activo" : "Inactivo"}
-              </span>
+              </Badge>
             </div>
           </div>
 
           {/* Tabs */}
           <div className="border-b border-white/10">
-            <nav className="flex gap-3">
+            <nav className="flex gap-1">
               {(["perfil", "roles", "actividad"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className={`px-3 py-2 text-sm border-b-2 -mb-px ${
+                  className={`border-b-2 px-4 py-3 text-sm font-medium capitalize transition ${
                     tab === t
-                      ? "border-white text-white"
-                      : "border-transparent text-neutral-400 hover:text-white"
+                      ? "border-blue-500 text-blue-400"
+                      : "border-transparent text-neutral-400 hover:text-neutral-300"
                   }`}
                 >
-                  {t === "perfil" ? "Perfil" : t === "roles" ? "Roles" : "Actividad"}
+                  {t === "perfil" && <User className="mr-2 inline size-4" />}
+                  {t === "roles" && <Shield className="mr-2 inline size-4" />}
+                  {t === "actividad" && <Clock className="mr-2 inline size-4" />}
+                  {t}
                 </button>
               ))}
             </nav>
           </div>
 
-          {/* Contenido de cada pestaña */}
+          {/* Contenido por Tab */}
           {tab === "perfil" && (
-            <section className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-white/10 p-4">
-                <div className="text-sm text-neutral-400">Teléfono</div>
-                <div className="mt-1">{perfil.telefono ?? "—"}</div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+                <div className="mb-1 text-sm text-neutral-400">Teléfono</div>
+                <div className="text-lg font-medium">
+                  {perfil.telefono || "No registrado"}
+                </div>
               </div>
-              <div className="rounded-xl border border-white/10 p-4">
-                <div className="text-sm text-neutral-400">Dirección</div>
-                <div className="mt-1 break-words">{perfil.direccion ?? "—"}</div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+                <div className="mb-1 text-sm text-neutral-400">Dirección</div>
+                <div className="text-lg font-medium">
+                  {perfil.direccion || "No registrada"}
+                </div>
               </div>
-            </section>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+                <div className="mb-1 text-sm text-neutral-400">Verificación</div>
+                <div className="text-lg font-medium">
+                  {perfil.verificado ? (
+                    <Badge variant="success">Verificado</Badge>
+                  ) : (
+                    <Badge variant="warning">Pendiente</Badge>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+                <div className="mb-1 text-sm text-neutral-400">Última actualización</div>
+                <div className="text-sm">
+                  {perfil.updated_at
+                    ? new Date(perfil.updated_at).toLocaleString("es")
+                    : "—"}
+                </div>
+              </div>
+            </div>
           )}
 
           {tab === "roles" && (
-            <section className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-2">
               {/* Roles actuales */}
-              <div className="rounded-xl border border-white/10 p-4">
-                <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                  <Shield className="size-4" />
-                  Roles asignados
+              <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <Shield className="size-4 text-emerald-400" />
+                  <h3 className="font-semibold">Roles Asignados</h3>
+                  <Badge variant="success">{rolesActuales.length}</Badge>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {rolesActuales.length ? (
-                    rolesActuales.map((r) => (
-                      <span
+
+                {rolesActuales.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-white/10 p-6 text-center">
+                    <Shield className="mx-auto size-8 text-neutral-600" />
+                    <p className="mt-2 text-sm text-neutral-400">Sin roles asignados</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {rolesActuales.map((r) => (
+                      <div
                         key={r}
-                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs"
+                        className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-3 hover:bg-white/5"
                       >
-                        {r}
+                        <div className="flex items-center gap-2">
+                          <div className="rounded-lg bg-purple-500/20 p-1.5">
+                            <Shield className="size-4 text-purple-400" />
+                          </div>
+                          <span className="font-medium">{r}</span>
+                        </div>
                         <button
                           onClick={() => onQuitar(r)}
-                          className="ml-1 hover:text-rose-400"
-                          title="Quitar"
+                          className="rounded-lg p-2 text-red-400 opacity-0 hover:bg-red-500/20 group-hover:opacity-100"
+                          title="Quitar rol"
                         >
-                          <Trash2 className="size-3.5" />
+                          <Trash2 className="size-4" />
                         </button>
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-neutral-400 text-sm">Sin roles</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Asignar roles */}
+              <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+                <div className="mb-4">
+                  <h3 className="mb-3 font-semibold">Asignar Nuevo Rol</h3>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                    <input
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                      placeholder="Buscar roles..."
+                      className="w-full rounded-lg border border-white/10 bg-neutral-900 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-96 space-y-2 overflow-y-auto">
+                  {filteredDisp.map((r) => {
+                    const yaAsignado = rolesActuales
+                      .map((x) => x.toUpperCase())
+                      .includes(r.nombre.toUpperCase());
+
+                    return (
+                      <div
+                        key={r.id_rol}
+                        className={`flex items-center justify-between rounded-lg border p-3 ${
+                          yaAsignado
+                            ? "border-emerald-500/30 bg-emerald-500/10"
+                            : "border-white/10 bg-black/20"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`rounded-lg p-1.5 ${
+                              yaAsignado ? "bg-emerald-500/20" : "bg-blue-500/20"
+                            }`}
+                          >
+                            <Shield
+                              className={`size-4 ${
+                                yaAsignado ? "text-emerald-400" : "text-blue-400"
+                              }`}
+                            />
+                          </div>
+                          <span className="text-sm">{r.nombre}</span>
+                        </div>
+
+                        {yaAsignado ? (
+                          <Badge variant="success">Asignado</Badge>
+                        ) : (
+                          <button
+                            onClick={() => onAsignar(r.id_rol, r.nombre)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium hover:bg-blue-500"
+                          >
+                            <Plus className="size-3.5" />
+                            Asignar
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {filteredDisp.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-white/10 p-6 text-center">
+                      <p className="text-sm text-neutral-400">No se encontraron roles</p>
+                    </div>
                   )}
                 </div>
               </div>
-
-              {/* Asignar rol */}
-              <div className="rounded-xl border border-white/10 p-4 space-y-2">
-                <div className="text-sm font-medium">Asignar rol</div>
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 size-4 text-neutral-400" />
-                  <input
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filtra por nombre…"
-                    className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-8 pr-3 text-sm outline-none"
-                  />
-                </div>
-                <div className="max-h-72 overflow-auto rounded-lg border border-white/10">
-                  <ul className="divide-y divide-white/5">
-                    {filteredDisp.map((r) => {
-                      const ya = rolesActuales
-                        .map((x) => x.toUpperCase())
-                        .includes(r.nombre.toUpperCase());
-                      return (
-                        <li key={r.id_rol} className="flex items-center justify-between p-2 text-sm">
-                          <div>{r.nombre}</div>
-                          <button
-                            disabled={ya}
-                            onClick={() => onAsignar(r.id_rol)}
-                            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                              ya
-                                ? "bg-neutral-700 text-neutral-300"
-                                : "bg-sky-600 hover:bg-sky-500 text-white"
-                            }`}
-                          >
-                            <Plus className="size-3.5" /> Asignar
-                          </button>
-                        </li>
-                      );
-                    })}
-                    {filteredDisp.length === 0 && (
-                      <li className="p-3 text-sm text-neutral-400">No hay roles para mostrar.</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            </section>
+            </div>
           )}
 
           {tab === "actividad" && (
-            <section className="rounded-xl border border-white/10 p-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
               {actLoading ? (
-                <div className="text-neutral-300 flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin" />
-                  Cargando actividad…
+                <div className="py-12 text-center">
+                  <Loader2 className="mx-auto size-8 animate-spin text-blue-400" />
+                  <p className="mt-3 text-sm text-neutral-400">Cargando actividad...</p>
+                </div>
+              ) : actividad.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Clock className="mx-auto size-12 text-neutral-600" />
+                  <p className="mt-3 text-sm text-neutral-400">Sin actividad reciente</p>
                 </div>
               ) : (
-                <ul className="space-y-3">
-                  {actividad.map((a) => (
-                    <li key={a.id_auditoria} className="rounded-lg border border-white/10 p-3">
-                      <div className="text-xs text-neutral-400">
-                        {new Date(a.fecha_hora).toLocaleString()} · {a.modulo} · {a.accion}
+                <div className="space-y-3">
+                  {actividad.slice(0, 10).map((a) => (
+                    <div
+                      key={a.id_auditoria}
+                      className="rounded-lg border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="info">{a.modulo}</Badge>
+                            <Badge variant="purple">{a.accion}</Badge>
+                          </div>
+                          {a.detalle && (
+                            <p className="mt-2 text-sm text-neutral-300">{a.detalle}</p>
+                          )}
+                        </div>
+                        <div className="text-xs text-neutral-500">
+                          {new Date(a.fecha_hora).toLocaleString("es", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
                       </div>
-                      {a.detalle && <div className="mt-1 text-sm">{a.detalle}</div>}
+
                       {(a.old_values || a.new_values) && (
-                        <details className="mt-2 text-xs">
-                          <summary className="cursor-pointer text-neutral-300">Ver cambios</summary>
-                          <pre className="mt-1 whitespace-pre-wrap break-all text-neutral-300">
-                            {a.old_values ? `OLD: ${a.old_values}\n` : ""}
-                            {a.new_values ? `NEW: ${a.new_values}` : ""}
-                          </pre>
+                        <details className="mt-3">
+                          <summary className="cursor-pointer text-xs text-neutral-400">
+                            Ver cambios
+                          </summary>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {a.old_values && (
+                              <pre className="rounded-lg border border-white/10 bg-black/30 p-2 text-xs text-neutral-300 whitespace-pre-wrap">
+                                {typeof a.old_values === "string"
+                                  ? a.old_values
+                                  : JSON.stringify(a.old_values, null, 2)}
+                              </pre>
+                            )}
+                            {a.new_values && (
+                              <pre className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-2 text-xs text-blue-300 whitespace-pre-wrap">
+                                {typeof a.new_values === "string"
+                                  ? a.new_values
+                                  : JSON.stringify(a.new_values, null, 2)}
+                              </pre>
+                            )}
+                          </div>
                         </details>
                       )}
-                    </li>
+                    </div>
                   ))}
-                  {actividad.length === 0 && (
-                    <li className="text-neutral-400 text-sm">Sin actividad reciente.</li>
-                  )}
-                </ul>
+                </div>
               )}
-            </section>
+            </div>
           )}
         </>
       )}
