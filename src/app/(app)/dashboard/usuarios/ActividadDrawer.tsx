@@ -1,4 +1,3 @@
-// src/app/(app)/dashboard/usuarios/ActividadDrawer.tsx
 "use client";
 
 import * as React from "react";
@@ -6,6 +5,7 @@ import { X, AlertCircle, Loader2, Calendar, User, FileText, Filter } from "lucid
 import { getActividadUsuario, type ActividadItem } from "@/app/services/adminUsuarios";
 import Badge from "@/components/ui/Badge";
 
+/* =============== Tipos locales y helpers =============== */
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -13,6 +13,20 @@ type Props = {
   userName?: string;
 };
 
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (
+    typeof e === "object" &&
+    e &&
+    "message" in e &&
+    typeof (e as { message: unknown }).message === "string"
+  ) {
+    return (e as { message: string }).message;
+  }
+  return "Error desconocido";
+}
+
+/* ===================== Componente ===================== */
 export default function ActividadDrawer({ open, onClose, userId, userName }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -41,41 +55,40 @@ export default function ActividadDrawer({ open, onClose, userId, userName }: Pro
     });
   }, [items, moduloFilter, accionFilter]);
 
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!open || !userId) return;
-      try {
-        setLoading(true);
-        setError(null);
-        const r = await getActividadUsuario(userId, { 
-          limit: 100, 
-          offset: 0, 
-          include_values: true 
-        });
-        if (!alive) return;
-        setItems(r.items ?? []);
-        setTotal(r.total ?? 0);
-      } catch (e: any) {
-        if (!alive) return;
-        setError(e?.message ?? "Error al cargar actividad");
-      } finally {
-        if (!alive) return;
-        setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+  const load = React.useCallback(async (): Promise<void> => {
+    if (!open || !userId) return;
+    try {
+      setLoading(true);
+      setError(null);
+
+      const r = await getActividadUsuario(userId, {
+        limit: 100,
+        offset: 0,
+        include_values: true,
+      });
+
+      setItems(r.items ?? []);
+      setTotal(typeof r.total === "number" ? r.total : 0);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }, [open, userId]);
+
+  React.useEffect(() => {
+    void load();
+    // limpiar filtros cuando se abre con usuario distinto
+    if (open) {
+      setModuloFilter("");
+      setAccionFilter("");
+    }
+  }, [load, open, userId]);
 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose}>
       {/* Panel deslizable */}
       <div
         className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-hidden border-l border-white/10 bg-neutral-950 shadow-2xl"

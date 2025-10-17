@@ -36,10 +36,15 @@ function dmy(iso?: string | null): string {
     : d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-function getErrorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string") {
-    return (e as { message: string }).message;
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (
+    err &&
+    typeof err === "object" &&
+    "message" in err &&
+    typeof (err as { message?: unknown }).message === "string"
+  ) {
+    return (err as { message: string }).message;
   }
   return "Error desconocido";
 }
@@ -48,7 +53,9 @@ function getErrorMessage(e: unknown): string {
 export default function AdminSolicitudesPage() {
   const [items, setItems] = React.useState<AdminSolicitud[]>([]);
   const [total, setTotal] = React.useState<number>(0);
-  const [limit, setLimit] = React.useState<number>(50);
+
+  // Evitamos el warning de setLimit no usado: no necesitamos estado para el límite
+  const LIMIT = 50;
   const [offset, setOffset] = React.useState<number>(0);
 
   const [loading, setLoading] = React.useState(true);
@@ -60,25 +67,25 @@ export default function AdminSolicitudesPage() {
       setError(null);
 
       const r = await api.get<ListResponse<AdminSolicitud>>("/admin/solicitudes", {
-        params: { limit, offset },
+        params: { limit: LIMIT, offset },
       });
 
-      const { items: solicitudes, total: totalCount } = r.data;
-      setItems(solicitudes ?? []);
-      setTotal(totalCount ?? 0);
+      const data = r.data;
+      setItems(Array.isArray(data.items) ? data.items : []);
+      setTotal(typeof data.total === "number" ? data.total : 0);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [limit, offset]);
+  }, [offset]);
 
   React.useEffect(() => {
     void fetchData();
   }, [fetchData]);
 
   const canPrev = offset > 0;
-  const canNext = offset + limit < total;
+  const canNext = offset + LIMIT < total;
 
   return (
     <div className="p-4 space-y-4">
@@ -164,7 +171,7 @@ export default function AdminSolicitudesPage() {
       )}
 
       {/* Paginación simple */}
-      {!loading && !error && total > limit && (
+      {!loading && !error && total > LIMIT && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-neutral-400">
             Mostrando {items.length} de {total}
@@ -172,14 +179,14 @@ export default function AdminSolicitudesPage() {
           <div className="flex gap-2">
             <button
               disabled={!canPrev}
-              onClick={() => setOffset(Math.max(0, offset - limit))}
+              onClick={() => setOffset(Math.max(0, offset - LIMIT))}
               className="rounded-lg border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5 disabled:opacity-50"
             >
               Anterior
             </button>
             <button
               disabled={!canNext}
-              onClick={() => setOffset(offset + limit)}
+              onClick={() => setOffset(offset + LIMIT)}
               className="rounded-lg border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5 disabled:opacity-50"
             >
               Siguiente

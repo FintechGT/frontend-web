@@ -1,4 +1,3 @@
-// src/app/(app)/dashboard/usuarios/UsuarioRolesModal.tsx (continuación)
 "use client";
 
 import * as React from "react";
@@ -10,18 +9,33 @@ import {
   type RolItem,
 } from "@/app/services/adminUsuarios";
 import Badge from "@/components/ui/Badge";
-import { 
-  Loader2, 
-  Search, 
-  Plus, 
-  Trash2, 
-  Shield, 
-  X, 
+import {
+  Loader2,
+  Search,
+  Plus,
+  Trash2,
+  Shield,
+  X,
   AlertCircle,
-  CheckCircle2 
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 
+/* ================= Helpers ================= */
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (
+    typeof e === "object" &&
+    e &&
+    "message" in e &&
+    typeof (e as { message: unknown }).message === "string"
+  ) {
+    return (e as { message: string }).message;
+  }
+  return "Error desconocido";
+}
+
+/* ================= Types ================= */
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -31,6 +45,7 @@ type Props = {
   onChanged?: () => void | Promise<void>;
 };
 
+/* ================ Component ================ */
 export default function UsuarioRolesModal({
   open,
   onClose,
@@ -50,13 +65,14 @@ export default function UsuarioRolesModal({
   const filteredDisp = React.useMemo(() => {
     const f = filter.trim().toLowerCase();
     if (!f) return rolesDisp;
-    return rolesDisp.filter((r) => 
-      r.nombre.toLowerCase().includes(f) || 
-      r.descripcion?.toLowerCase().includes(f)
+    return rolesDisp.filter(
+      (r) =>
+        r.nombre.toLowerCase().includes(f) ||
+        (r.descripcion?.toLowerCase().includes(f) ?? false),
     );
   }, [filter, rolesDisp]);
 
-  async function load() {
+  const load = React.useCallback(async (): Promise<void> => {
     if (!userId) return;
     try {
       setLoading(true);
@@ -65,67 +81,74 @@ export default function UsuarioRolesModal({
         listarRolesDeUsuario(userId),
         listarRolesDisponibles(),
       ]);
-      setRolesActuales(ract ?? []);
-      setRolesDisp(rdisp ?? []);
-    } catch (e: any) {
-      setError(e?.message ?? "No se pudieron cargar los roles");
+      setRolesActuales(Array.isArray(ract) ? ract : []);
+      setRolesDisp(Array.isArray(rdisp) ? rdisp : []);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
       toast.error("Error al cargar roles");
     } finally {
       setLoading(false);
     }
-  }
+  }, [userId]);
 
   React.useEffect(() => {
     if (open && userId) {
-      load();
+      void load();
       setFilter("");
     }
-  }, [open, userId]);
+  }, [open, userId, load]);
 
-  async function handleAsignar(id_rol: number, nombre: string) {
-    if (!userId) return;
-    try {
-      setBusy(true);
-      await asignarRolAUsuario(userId, id_rol);
-      await load();
-      if (onChanged) await onChanged();
-      toast.success(`Rol "${nombre}" asignado correctamente`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo asignar el rol");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const handleAsignar = React.useCallback(
+    async (id_rol: number, nombre: string): Promise<void> => {
+      if (!userId) return;
+      try {
+        setBusy(true);
+        await asignarRolAUsuario(userId, id_rol);
+        await load();
+        if (onChanged) await onChanged();
+        toast.success(`Rol "${nombre}" asignado correctamente`);
+      } catch (err: unknown) {
+        toast.error(getErrorMessage(err) || "No se pudo asignar el rol");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [userId, load, onChanged],
+  );
 
-  async function handleQuitar(rolNombre: string) {
-    if (!userId) return;
-    
-    if (!confirm(`¿Seguro que deseas quitar el rol "${rolNombre}"?`)) return;
+  const handleQuitar = React.useCallback(
+    async (rolNombre: string): Promise<void> => {
+      if (!userId) return;
+      if (!confirm(`¿Seguro que deseas quitar el rol "${rolNombre}"?`)) return;
 
-    const rol = rolesDisp.find((r) => r.nombre.toUpperCase() === rolNombre.toUpperCase());
-    if (!rol) {
-      toast.error("No se encontró el rol en el catálogo");
-      return;
-    }
+      const rol = rolesDisp.find(
+        (r) => r.nombre.toUpperCase() === rolNombre.toUpperCase(),
+      );
+      if (!rol) {
+        toast.error("No se encontró el rol en el catálogo");
+        return;
+      }
 
-    try {
-      setBusy(true);
-      await quitarRolDeUsuario(userId, rol.id_rol);
-      await load();
-      if (onChanged) await onChanged();
-      toast.success(`Rol "${rolNombre}" removido correctamente`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo quitar el rol");
-    } finally {
-      setBusy(false);
-    }
-  }
+      try {
+        setBusy(true);
+        await quitarRolDeUsuario(userId, rol.id_rol);
+        await load();
+        if (onChanged) await onChanged();
+        toast.success(`Rol "${rolNombre}" removido correctamente`);
+      } catch (err: unknown) {
+        toast.error(getErrorMessage(err) || "No se pudo quitar el rol");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [userId, rolesDisp, load, onChanged],
+  );
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div 
+      <div
         className="w-full max-w-3xl rounded-2xl border border-white/10 bg-neutral-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -171,7 +194,7 @@ export default function UsuarioRolesModal({
             </div>
           ) : (
             <div className="grid gap-6 lg:grid-cols-2">
-              {/* Roles Actuales */}
+              {/* Roles Asignados */}
               <div className="rounded-xl border border-white/10 bg-white/5 p-5">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -190,7 +213,7 @@ export default function UsuarioRolesModal({
                   <div className="space-y-2">
                     {rolesActuales.map((r) => {
                       const rolInfo = rolesDisp.find(
-                        (rd) => rd.nombre.toUpperCase() === r.toUpperCase()
+                        (rd) => rd.nombre.toUpperCase() === r.toUpperCase(),
                       );
                       return (
                         <div
@@ -212,7 +235,7 @@ export default function UsuarioRolesModal({
                           </div>
                           <button
                             disabled={busy}
-                            onClick={() => handleQuitar(r)}
+                            onClick={() => void handleQuitar(r)}
                             className="rounded-lg p-2 text-red-400 opacity-0 transition hover:bg-red-500/20 group-hover:opacity-100 disabled:opacity-50"
                             title="Quitar rol"
                           >
@@ -269,9 +292,7 @@ export default function UsuarioRolesModal({
                           <div className="flex items-center gap-3">
                             <div
                               className={`rounded-lg p-1.5 ${
-                                yaAsignado
-                                  ? "bg-emerald-500/20"
-                                  : "bg-blue-500/20"
+                                yaAsignado ? "bg-emerald-500/20" : "bg-blue-500/20"
                               }`}
                             >
                               <Shield
@@ -283,9 +304,7 @@ export default function UsuarioRolesModal({
                             <div>
                               <div className="font-medium">{r.nombre}</div>
                               {r.descripcion && (
-                                <div className="text-xs text-neutral-400">
-                                  {r.descripcion}
-                                </div>
+                                <div className="text-xs text-neutral-400">{r.descripcion}</div>
                               )}
                             </div>
                           </div>
@@ -298,7 +317,7 @@ export default function UsuarioRolesModal({
                           ) : (
                             <button
                               disabled={busy}
-                              onClick={() => handleAsignar(r.id_rol, r.nombre)}
+                              onClick={() => void handleAsignar(r.id_rol, r.nombre)}
                               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
                             >
                               <Plus className="size-3.5" />
