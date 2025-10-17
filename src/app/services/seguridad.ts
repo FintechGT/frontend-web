@@ -1,141 +1,108 @@
-// src/app/services/seguridad.ts
 import api from "@/lib/api";
 
-/* ============================
- * Catálogos de Seguridad (CRUD)
- * ============================ */
-export type Rol = {
-  id_rol: number;
+/** ===== Tipos base ===== */
+export type JwtPayloadBase = Record<string, unknown> & {
+  sub?: string | number;
+  exp?: number;
+  iat?: number;
+  roles?: unknown;
+};
+
+export interface UsuarioAuth {
+  id: number;
   nombre: string;
-  descripcion?: string | null;
-  activo: boolean;
-};
-
-export const listRoles = async (params?: {
-  q?: string;
-  activo?: boolean;
-  limit?: number;
-  offset?: number;
-}) => (await api.get("/roles", { params })).data ?? [];
-
-export const createRol = async (p: Omit<Rol, "id_rol">) =>
-  (await api.post("/roles", p)).data;
-
-export const updateRol = async (id: number, p: Partial<Omit<Rol, "id_rol">>) =>
-  (await api.patch(`/roles/${id}`, p)).data;
-
-export const deleteRol = async (id: number) => {
-  await api.delete(`/roles/${id}`);
-};
-
-export type Permiso = {
-  id_permiso: number;
-  id_modulo: number;
-  id_accion: number;
-  codigo: string; // ej: "solicitudes.admin"
-  descripcion?: string | null;
-  activo: boolean;
-};
-
-export const listPermisos = async (params?: { id_modulo?: number }) =>
-  (await api.get("/permisos", { params })).data ?? [];
-
-export const createPermiso = async (p: Omit<Permiso, "id_permiso">) =>
-  (await api.post("/permisos", p)).data;
-
-export const createPermisosBulk = async (p: {
-  id_modulo: number;
-  items: Array<Omit<Permiso, "id_permiso" | "id_modulo">>;
-}) => (await api.post("/permisos/bulk", p)).data;
-
-export const deletePermiso = async (id: number) => {
-  await api.delete(`/permisos/${id}`);
-};
-
-export const deletePermisosPorModulo = async (id_modulo: number) => {
-  await api.delete(`/permisos/modulo/${id_modulo}`);
-};
-
-export type Modulo = {
-  id_modulo: number;
-  nombre: string;
-  descripcion?: string | null;
-  ruta?: string | null;
-  activo: boolean;
-};
-
-export const listModulos = async (params?: { activo?: boolean }) =>
-  (await api.get("/modulos", { params })).data ?? [];
-
-export const createModulo = async (p: Omit<Modulo, "id_modulo">) =>
-  (await api.post("/modulos", p)).data;
-
-export const updateModulo = async (
-  id: number,
-  p: Partial<Omit<Modulo, "id_modulo">>
-) => (await api.patch(`/modulos/${id}`, p)).data;
-
-export const deleteModulo = async (id: number) => {
-  await api.delete(`/modulos/${id}`);
-};
-
-export const listPermisosDeRol = async (id_rol: number) =>
-  (await api.get(`/roles/${id_rol}/permisos`)).data ?? [];
-
-export const asignarPermisosARol = async (
-  id_rol: number,
-  items: Array<{ id_permiso: number; otorgado: boolean }>
-) => (await api.post(`/roles/${id_rol}/permisos`, { items })).data;
-
-export const quitarPermisoDeRol = async (id_rol: number, id_permiso: number) => {
-  await api.delete(`/roles/${id_rol}/permisos/${id_permiso}`);
-};
-
-/* ============================
- * Capacidades del usuario
- * (roles / permisos del usuario logueado)
- * ============================ */
-
-/** Intenta obtener los roles del usuario actual (en MAYÚSCULAS). */
-export async function getMisRoles(): Promise<string[]> {
-  // Ajusta la ruta si tu backend usa otra (por ejemplo /seguridad/mis-roles)
-  const r = await api.get("/seguridad/mis-roles").catch(() => null);
-  const data = r?.data;
-  const roles = Array.isArray(data) ? data : data?.roles;
-  return Array.isArray(roles)
-    ? roles.map((x) => String(x).toUpperCase())
-    : [];
+  correo: string;
+  roles: string[];
 }
 
-/** Intenta obtener los permisos del usuario actual (códigos). */
-export async function getMisPermisos(): Promise<string[]> {
-  // Ajusta la ruta si tu backend usa otra (por ejemplo /seguridad/mis-permisos)
-  const r = await api.get("/seguridad/mis-permisos").catch(() => null);
-  const data = r?.data;
-  const permisos = Array.isArray(data) ? data : data?.permisos;
-  return Array.isArray(permisos) ? permisos.map((x) => String(x)) : [];
+export interface AuthMeResponse {
+  usuario: UsuarioAuth;
+  token?: string;
 }
 
-/** Guarda roles/permisos en localStorage para checks sincrónicos en el cliente. */
-export async function primeAuthCapabilitiesCache(): Promise<void> {
-  const [roles, permisos] = await Promise.all([getMisRoles(), getMisPermisos()]);
-  if (typeof window !== "undefined") {
-    localStorage.setItem("roles", JSON.stringify(roles)); // ["ADMINISTRADOR",...]
-    localStorage.setItem("permisos_codigos", JSON.stringify(permisos)); // ["solicitudes.admin",...]
-  }
+/** ===== Type guards ===== */
+export function isStringArray(x: unknown): x is string[] {
+  return Array.isArray(x) && x.every((i) => typeof i === "string");
 }
 
-/** Fallback pragmático: verifica si el usuario puede acceder al módulo admin de solicitudes. */
-export async function esAdminSolicitudes(): Promise<boolean> {
+/** ===== JWT ===== */
+export function parseJWT<T extends JwtPayloadBase = JwtPayloadBase>(token: string): T | null {
   try {
-    await api.get("/admin/solicitudes", { params: { limit: 1, offset: 0 } });
-    return true;
-  } catch (e: any) {
-    const msg = e?.message?.toLowerCase?.() ?? "";
-    if (msg.includes("403") || msg.includes("401") || msg.includes("forbidden") || msg.includes("unauthorized")) {
-      return false;
-    }
-    // otro error (red/CORS), propaga para que lo veas
-    throw e;
+    const [, payloadB64] = token.split(".");
+    if (!payloadB64) return null;
+    const json = atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"));
+    const obj: unknown = JSON.parse(json);
+    if (obj && typeof obj === "object") return obj as T;
+    return null;
+  } catch {
+    return null;
   }
+}
+
+export function tokenExpirado(token: string | null): boolean {
+  if (!token) return true;
+  const payload = parseJWT(token);
+  const exp = typeof payload?.exp === "number" ? payload.exp : null;
+  if (!exp) return false; // si no hay exp no podemos afirmar expiración
+  const now = Math.floor(Date.now() / 1000);
+  return now >= exp;
+}
+
+/** ===== Local storage ===== */
+const ACCESS_TOKEN_KEY = "access_token";
+
+export function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+export function setAccessToken(token: string): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(ACCESS_TOKEN_KEY, token);
+}
+
+export function clearAccessToken(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+}
+
+/** ===== Headers ===== */
+export function authHeader(): Record<string, string> {
+  const t = getAccessToken();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+/** ===== Roles / permisos ===== */
+export function rolesDesdeToken(token: string | null): string[] {
+  if (!token) return [];
+  const payload = parseJWT(token);
+  const roles = payload?.roles;
+  return isStringArray(roles) ? roles : [];
+}
+
+export function tienePermiso(permiso: string, roles: string[]): boolean {
+  const target = permiso.toLowerCase();
+  const set = new Set(roles.map((r) => r.toLowerCase()));
+  if (set.has("admin") || set.has("administrador")) return true;
+  return set.has(target) || set.has(`${target}.view`) || set.has(`${target}.listar`);
+}
+
+/** ===== API tipada ===== */
+export async function authMe(): Promise<AuthMeResponse> {
+  const { data } = await api.get<AuthMeResponse>("/auth/me");
+  return data;
+}
+
+export async function refreshToken(): Promise<{ token: string }> {
+  const { data } = await api.post<{ token: string }>("/auth/refresh");
+  return data;
+}
+
+/** ===== Errores sin `any` ===== */
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string") {
+    return (err as { message: string }).message;
+  }
+  return "Error desconocido";
 }
