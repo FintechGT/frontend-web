@@ -43,7 +43,7 @@ export function tokenExpirado(token: string | null): boolean {
   if (!token) return true;
   const payload = parseJWT(token);
   const exp = typeof payload?.exp === "number" ? payload.exp : null;
-  if (!exp) return false; // si no hay exp no podemos afirmar expiración
+  if (!exp) return false;
   const now = Math.floor(Date.now() / 1000);
   return now >= exp;
 }
