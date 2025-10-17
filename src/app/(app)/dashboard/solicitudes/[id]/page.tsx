@@ -1,220 +1,230 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import api from "@/lib/api";
-import { usePermiso } from "@/hooks/usePermiso";
-import { type Solicitud, getArticulosSolicitud } from "@/app/services/solicitudes";
-import { ArrowLeft, Shield } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, Package, Clock, CheckCircle2, XCircle, ChevronDown } from "lucide-react";
 
-function formatMoney(n: number | undefined): string {
-  if (typeof n !== "number" || Number.isNaN(n)) return "—";
-  return n.toLocaleString(undefined, {
-    style: "currency",
-    currency: "GTQ",
-    maximumFractionDigits: 2,
-  });
+/* ===== Tipos ===== */
+type Foto = {
+  id_foto: number;
+  url: string;
+};
+
+type Articulo = {
+  id_articulo: number;
+  descripcion: string;
+  tipo_nombre?: string;
+  condicion?: string;
+  estado: string;
+  valor_estimado?: number;
+  valor_aprobado?: number | null;
+  fotos?: Foto[];
+};
+
+type SolicitudDetalle = {
+  id_solicitud: number;
+  estado: string;
+  fecha_envio?: string | null;
+  metodo_entrega?: string | null;
+  articulos: Articulo[];
+};
+
+/* ===== Helpers ===== */
+function getErrMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err && typeof (err as { message?: unknown }).message === "string") {
+    return (err as { message: string }).message;
+  }
+  return "Error desconocido";
 }
 
-function formatDate(iso?: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
+function fmtDate(d?: string | null): string {
+  if (!d) return "—";
+  const dt = new Date(d);
+  return Number.isNaN(dt.getTime())
     ? "—"
-    : d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
+    : dt.toLocaleString(undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 }
 
+/* ===== Página ===== */
 export default function SolicitudDetallePage() {
-  const params = useParams<{ id: string }>();
   const router = useRouter();
+  const params = useParams<{ id: string }>();
   const id = Number(params?.id);
-
-  // <-- AGREGADO: chequear permisos de admin para mostrar botón
-  const esAdmin = usePermiso(["ADMIN_SOLICITUDES_LISTAR", "valuacion.aprobar"]);
 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [s, setS] = React.useState<Solicitud | null>(null);
+  const [data, setData] = React.useState<SolicitudDetalle | null>(null);
 
-  React.useEffect(() => {
-    if (!Number.isFinite(id)) {
-      setError("ID inválido");
-      setLoading(false);
-      return;
-    }
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const load = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        // 1) Trae la solicitud "completa"
-        const res = await api.get<Solicitud>(`/solicitudes-completa/${id}`);
-        let solicitud = res.data;
-
-        // 2) Si el backend no envía artículos (o viene vacío), intenta cargar por endpoint dedicado
-        if (!solicitud.articulos || solicitud.articulos.length === 0) {
-          try {
-            const arts = await getArticulosSolicitud(id);
-            solicitud = { ...solicitud, articulos: arts };
-          } catch {
-            // silencioso
-          }
-        }
-
-        if (alive) setS(solicitud);
-      } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : "No se pudo cargar");
-      } finally {
-        if (alive) setLoading(false);
+      if (!Number.isFinite(id)) {
+        setError("ID inválido");
+        setData(null);
+        return;
       }
-    })();
-    return () => {
-      alive = false;
-    };
+
+      const r = await api.get<SolicitudDetalle>(`/solicitudes/${id}`);
+      setData(r.data);
+    } catch (e: unknown) {
+      setError(getErrMsg(e));
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <div className="grid place-items-center py-16 text-neutral-400">
+        <Loader2 className="mr-2 size-6 animate-spin" />
+        Cargando…
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="space-y-4">
         <button
           onClick={() => router.push("/dashboard/solicitudes")}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
+          className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
         >
           <ArrowLeft className="size-4" />
           Volver
         </button>
-        <h1 className="text-xl font-semibold">Solicitud {Number.isFinite(id) ? `#${id}` : ""}</h1>
+
+        <div className="flex items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 p-8 text-red-400">
+          <AlertCircle className="mr-2 size-5" />
+          {error ?? "No se pudo cargar la solicitud."}
+        </div>
+      </div>
+    );
+  }
+
+  const { articulos } = data;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push("/dashboard/solicitudes")}
+            className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
+          >
+            <ArrowLeft className="size-4" />
+            Volver
+          </button>
+          <h1 className="text-xl font-semibold">Solicitud #{data.id_solicitud}</h1>
+          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs capitalize text-neutral-300">
+            {data.estado}
+          </span>
+        </div>
+
+        <div className="text-xs text-neutral-400">
+          Enviada: {fmtDate(data.fecha_envio)} · Método: {data.metodo_entrega ?? "—"}
+        </div>
       </div>
 
-      {loading ? (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">Cargando…</div>
-      ) : error ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm">{error}</div>
-      ) : !s ? (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">
-          No se encontró la solicitud.
+      {/* Artículos */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Package className="size-4 text-blue-300" />
+          <h2 className="font-semibold">Artículos</h2>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-neutral-300">
+            {articulos.length}
+          </span>
         </div>
-      ) : (
-        <>
-          {/* Resumen */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <dl className="grid gap-4 sm:grid-cols-2 text-sm">
-              <div>
-                <dt className="text-neutral-400">Código</dt>
-                <dd className="mt-0.5">{s.codigo ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-neutral-400">Estado</dt>
-                <dd className="mt-0.5 capitalize">{s.estado}</dd>
-              </div>
-              <div>
-                <dt className="text-neutral-400">Método entrega</dt>
-                <dd className="mt-0.5 capitalize">{s.metodo_entrega ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-neutral-400">Dirección</dt>
-                <dd className="mt-0.5 break-words">{s.direccion_entrega ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-neutral-400">Fecha envío</dt>
-                <dd className="mt-0.5">{formatDate(s.fecha_envio)}</dd>
-              </div>
-              <div>
-                <dt className="text-neutral-400">Vence</dt>
-                <dd className="mt-0.5">{formatDate(s.fecha_vencimiento)}</dd>
-              </div>
-            </dl>
-          </div>
 
-          {/* Artículos con galería */}
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold">Artículos</h2>
+        <div className="space-y-3">
+          {articulos.map((a) => (
+            <div key={a.id_articulo} className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-md bg-white/10 px-2 py-0.5 text-xs">
+                      #{a.id_articulo}
+                    </span>
+                    <span className="text-sm font-medium capitalize">
+                      {a.tipo_nombre ?? "Artículo"}
+                    </span>
+                    <span className="text-xs capitalize text-neutral-400">· {a.condicion}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-neutral-300">{a.descripcion}</p>
+                  <div className="mt-2 text-xs text-neutral-400">
+                    Valor estimado: <span className="font-mono">Q {a.valor_estimado}</span>
+                    {a.valor_aprobado != null && (
+                      <>
+                        {" "}
+                        · Valor aprobado:{" "}
+                        <span className="font-mono text-emerald-300">Q {a.valor_aprobado}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
 
-            {s.articulos?.length ? (
-              <ul className="grid gap-4">
-                {s.articulos.map((a) => (
-                  <li key={a.id_articulo} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-medium">{a.descripcion}</div>
-                      <div className="text-sm text-neutral-400 capitalize">{a.condicion}</div>
-                    </div>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${
+                    a.estado === "aprobado"
+                      ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      : a.estado === "rechazado"
+                      ? "border border-red-500/30 bg-red-500/10 text-red-300"
+                      : "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300"
+                  }`}
+                >
+                  {a.estado === "aprobado" ? (
+                    <CheckCircle2 className="size-3" />
+                  ) : a.estado === "rechazado" ? (
+                    <XCircle className="size-3" />
+                  ) : (
+                    <Clock className="size-3" />
+                  )}
+                  {a.estado}
+                </span>
+              </div>
 
-                    <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <dt className="text-neutral-400">Tipo</dt>
-                        <dd className="mt-0.5">#{a.id_tipo}</dd>
+              {/* Fotos */}
+              {a.fotos?.length ? (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs text-neutral-400">
+                    Ver fotos <ChevronDown className="ml-1 inline size-3" />
+                  </summary>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {a.fotos.map((f) => (
+                      <div key={f.id_foto} className="overflow-hidden rounded-lg border border-white/10">
+                        <Image
+                          src={f.url}
+                          alt={`Foto ${f.id_foto}`}
+                          width={160}
+                          height={120}
+                          className="h-[120px] w-[160px] object-cover"
+                          unoptimized
+                        />
                       </div>
-                      <div>
-                        <dt className="text-neutral-400">Valor estimado</dt>
-                        <dd className="mt-0.5">{formatMoney(a.valor_estimado)}</dd>
-                      </div>
-                    </dl>
-
-                    {/* Galería de fotos */}
-                    <div className="mt-3">
-                      <div className="mb-2 text-sm text-neutral-400">
-                        Fotos ({a.fotos?.length ?? 0})
-                      </div>
-                      {a.fotos?.length ? (
-                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                          {a.fotos
-                            .sort((x, y) => (x.orden ?? 0) - (y.orden ?? 0))
-                            .map((f) => (
-                              <a
-                                key={`${a.id_articulo}-${f.url}`}
-                                href={f.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block"
-                                title="Abrir en pestaña nueva"
-                              >
-                                <img
-                                  src={f.url}
-                                  alt="Foto de artículo"
-                                  loading="lazy"
-                                  className="h-28 w-full rounded-xl object-cover"
-                                />
-                              </a>
-                            ))}
-                        </div>
-                      ) : (
-                        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-400">
-                          Sin fotos
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-neutral-300">
-                Esta solicitud no tiene artículos.
-              </div>
-            )}
-          </section>
-
-          {/* Botones de acción */}
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/dashboard/solicitudes"
-              className="inline-flex items-center justify-center rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/5"
-            >
-              Ver todas
-            </Link>
-            {esAdmin && (
-              <Link
-                href={`/dashboard/solicitudes/${id}/admin`}
-                className="inline-flex items-center gap-2 justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500"
-              >
-                <Shield className="size-4" />
-                Vista Administrador
-              </Link>
-            )}
-          </div>
-        </>
-      )}
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

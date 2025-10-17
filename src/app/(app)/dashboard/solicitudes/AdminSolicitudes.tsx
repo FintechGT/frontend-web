@@ -1,4 +1,3 @@
-// src/app/(app)/dashboard/solicitudes/AdminSolicitudes.tsx
 "use client";
 
 import * as React from "react";
@@ -29,12 +28,20 @@ export type ListResponse<T> = {
 };
 
 /* ===== Helpers ===== */
-function dmy(iso?: string | null) {
+function dmy(iso?: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? "—"
     : d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string") {
+    return (e as { message: string }).message;
+  }
+  return "Error desconocido";
 }
 
 /* ===== Página ===== */
@@ -47,24 +54,27 @@ export default function AdminSolicitudesPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  const fetchData = React.useCallback(async () => {
+  const fetchData = React.useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
       setError(null);
+
       const r = await api.get<ListResponse<AdminSolicitud>>("/admin/solicitudes", {
         params: { limit, offset },
       });
-      setItems(r.data?.items ?? []);
-      setTotal(r.data?.total ?? 0);
-    } catch (e: any) {
-      setError(e?.message ?? "Error al cargar solicitudes");
+
+      const { items: solicitudes, total: totalCount } = r.data;
+      setItems(solicitudes ?? []);
+      setTotal(totalCount ?? 0);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }, [limit, offset]);
 
   React.useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
   const canPrev = offset > 0;
@@ -76,7 +86,7 @@ export default function AdminSolicitudesPage() {
       <div className="flex items-center gap-3">
         <h2 className="text-xl font-semibold">Solicitudes (Administración)</h2>
         <button
-          onClick={fetchData}
+          onClick={() => void fetchData()}
           className="ml-auto inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5"
           title="Refrescar"
         >
@@ -132,7 +142,6 @@ export default function AdminSolicitudesPage() {
                     <span className="text-red-400">{s.articulos_rechazados ?? 0} rech</span>
                   </td>
                   <td className="p-2">
-                    {/* Ir directamente a la vista admin */}
                     <Link
                       href={`/dashboard/solicitudes/${s.id_solicitud}/admin`}
                       className="inline-block rounded bg-emerald-600 px-3 py-1 text-white hover:bg-emerald-700"

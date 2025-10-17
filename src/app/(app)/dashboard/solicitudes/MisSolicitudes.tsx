@@ -1,9 +1,10 @@
- "use client";
+"use client";
 
 import * as React from "react";
 import api from "@/lib/api";
 import { RotateCw, AlertCircle } from "lucide-react";
 
+/* ========= Tipos ========= */
 type MisSolicitud = {
   id_solicitud: number;
   estado?: string;
@@ -11,8 +12,24 @@ type MisSolicitud = {
   metodo_entrega?: string | null;
 };
 
-type Paginada<T> = { items: T[]; total?: number; limit?: number; offset?: number };
+type Paginada<T> = {
+  items: T[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+};
 
+/* ========= Helpers ========= */
+function getErrMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return "Error desconocido";
+}
+
+/* ========= Página ========= */
 export default function MisSolicitudesPage() {
   const [items, setItems] = React.useState<MisSolicitud[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -25,15 +42,15 @@ export default function MisSolicitudesPage() {
         setLoading(true);
         setError(null);
 
-        const r = await api.get("/solicitudes-completa");
-        const data = r.data as Paginada<MisSolicitud> | MisSolicitud[];
+        const r = await api.get<Paginada<MisSolicitud> | MisSolicitud[]>("/solicitudes-completa");
+        const data = r.data;
         const rows = Array.isArray(data) ? data : data.items ?? [];
 
         if (!alive) return;
         setItems(rows);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!alive) return;
-        setError(e?.message ?? "Error al cargar mis solicitudes");
+        setError(getErrMsg(e) ?? "Error al cargar mis solicitudes");
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -46,7 +63,7 @@ export default function MisSolicitudesPage() {
 
   if (loading) {
     return (
-      <div className="text-neutral-400 flex items-center justify-center py-16">
+      <div className="flex items-center justify-center py-16 text-neutral-400">
         <RotateCw className="mr-2 animate-spin" />
         Cargando mis solicitudes…
       </div>
@@ -55,7 +72,7 @@ export default function MisSolicitudesPage() {
 
   if (error) {
     return (
-      <div className="text-red-400 flex items-center justify-center py-16">
+      <div className="flex items-center justify-center py-16 text-red-400">
         <AlertCircle className="mr-2" />
         {error}
       </div>
@@ -63,7 +80,7 @@ export default function MisSolicitudesPage() {
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 p-4">
       <h2 className="text-xl font-semibold">Mis Solicitudes</h2>
       <div className="overflow-x-auto rounded-xl border border-neutral-800">
         <table className="w-full text-sm">
@@ -79,7 +96,13 @@ export default function MisSolicitudesPage() {
               <tr key={s.id_solicitud} className="border-t border-neutral-800">
                 <td className="p-2">{s.estado ?? "—"}</td>
                 <td className="p-2">
-                  {s.fecha_envio ? new Date(s.fecha_envio).toLocaleDateString() : "—"}
+                  {s.fecha_envio
+                    ? new Date(s.fecha_envio).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      })
+                    : "—"}
                 </td>
                 <td className="p-2">{s.metodo_entrega ?? "—"}</td>
               </tr>
