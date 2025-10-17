@@ -1,4 +1,3 @@
-// src/components/AppShell.tsx
 "use client";
 
 import * as React from "react";
@@ -6,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
   Menu, X, Home, FileText, CreditCard, Settings, Shield, Users,
-  Package, TrendingUp, AlertCircle, BarChart3, Clock
+  Package, TrendingUp, BarChart3, Clock
 } from "lucide-react";
 import UserMenu from "@/components/ui/UserMenu";
 import { useAuth } from "@/app/AppLayoutClient";
@@ -112,7 +111,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       permiso: null,
       categoria: "config"
     },
-  ];
+  ] as const;
 
   // FILTRAR LINKS SEGÚN PERMISOS
   const links = allLinks.filter(link => 

@@ -1,4 +1,3 @@
-// src/app/services/adminSolicitudes.ts
 import api from "@/lib/api";
 
 export type SolicitudAdmin = {
@@ -102,13 +101,16 @@ export async function cambiarEstadoSolicitud(id_solicitud: number, nuevo_estado:
   return data;
 }
 
-export async function obtenerEstadisticasSolicitudes() {
-  const { data } = await api.get("/admin/solicitudes/stats/dashboard");
-  return data as {
-    total_solicitudes: number;
-    por_estado: Record<string, number>;
-    solicitudes_hoy: number;
-    solicitudes_semana: number;
-    articulos_pendientes_evaluacion: number;
-  };
+/** ====== TIPO + FUNCIÓN TIPADA PARA STATS (evita any) ====== */
+export type AdminStats = {
+  total_solicitudes: number;
+  por_estado: Record<string, number>;
+  solicitudes_hoy: number;
+  solicitudes_semana: number;
+  articulos_pendientes_evaluacion: number;
+};
+
+export async function obtenerEstadisticasSolicitudes(): Promise<AdminStats> {
+  const { data } = await api.get<AdminStats>("/admin/solicitudes/stats/dashboard");
+  return data;
 }

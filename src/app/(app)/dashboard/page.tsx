@@ -1,11 +1,10 @@
-// src/app/(app)/dashboard/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
 import { usePermiso } from "@/hooks/usePermiso";
 import { listMisSolicitudes, type Solicitud } from "@/app/services/solicitudes";
-import { obtenerEstadisticasSolicitudes } from "@/app/services/adminSolicitudes";
+import { obtenerEstadisticasSolicitudes, type AdminStats } from "@/app/services/adminSolicitudes";
 import { FileText, DollarSign, Calendar, TrendingUp, Users, AlertCircle } from "lucide-react";
 
 /* ===================== Utils ===================== */
@@ -48,7 +47,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<Solicitud[]>([]);
-  const [stats, setStats] = React.useState<any>(null);
+  const [stats, setStats] = React.useState<AdminStats | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -76,8 +75,6 @@ export default function DashboardPage() {
   }, [esAdmin]);
 
   // ====== Hooks derivados (SIEMPRE antes de cualquier return) ======
-  // Estos se ejecutan incluso si luego devolvemos la vista admin o loading/error,
-  // cumpliendo la Regla de Hooks (mismo orden en todos los renders).
   const proximoVenc = React.useMemo(() => {
     const fechas = items.map((s) => s.fecha_vencimiento).filter((f): f is string => Boolean(f));
     const min = fechas.length
