@@ -1,3 +1,4 @@
+// src/app/(app)/dashboard/usuarios/[id]/page.tsx
 "use client";
 
 import * as React from "react";
@@ -29,6 +30,16 @@ import {
   User,
 } from "lucide-react";
 import { toast } from "sonner";
+
+/* ================= Utils ================= */
+function getErrMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return "Error desconocido";
+}
 
 export default function UsuarioShowPage() {
   const router = useRouter();
@@ -82,9 +93,9 @@ export default function UsuarioShowPage() {
         setPerfil(u);
         setRolesActuales(ract);
         setRolesDisp(rdisp);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!alive) return;
-        setError(e?.message ?? "No se pudo cargar el usuario");
+        setError(getErrMsg(e) ?? "No se pudo cargar el usuario");
         toast.error("Error al cargar usuario");
       } finally {
         if (!alive) return;
@@ -96,23 +107,23 @@ export default function UsuarioShowPage() {
     };
   }, [userId]);
 
-  async function loadActividad() {
+  const loadActividad = React.useCallback(async () => {
     try {
       setActLoading(true);
       const r = await getActividadUsuario(userId, { limit: 50, offset: 0 });
       setActividad(r.items ?? []);
-    } catch (e: any) {
-      toast.error("No se pudo cargar la actividad");
+    } catch (e: unknown) {
+      toast.error(getErrMsg(e) ?? "No se pudo cargar la actividad");
     } finally {
       setActLoading(false);
     }
-  }
+  }, [userId]);
 
   React.useEffect(() => {
     if (tab === "actividad" && actividad.length === 0) {
-      loadActividad();
+      void loadActividad();
     }
-  }, [tab]);
+  }, [tab, actividad.length, loadActividad]);
 
   async function onAsignar(id_rol: number, nombre: string) {
     try {
@@ -120,13 +131,14 @@ export default function UsuarioShowPage() {
       const r = await listarRolesDeUsuario(userId);
       setRolesActuales(r);
       toast.success(`Rol "${nombre}" asignado`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo asignar el rol");
+    } catch (e: unknown) {
+      toast.error(getErrMsg(e) ?? "No se pudo asignar el rol");
     }
   }
 
   async function onQuitar(rolNombre: string) {
-    if (!confirm(`¿Quitar rol "${rolNombre}"?`)) return;
+    const ok = confirm(`¿Quitar rol "${rolNombre}"?`);
+    if (!ok) return;
 
     const rol = rolesDisp.find((r) => r.nombre.toUpperCase() === rolNombre.toUpperCase());
     if (!rol) return;
@@ -136,8 +148,8 @@ export default function UsuarioShowPage() {
       const r = await listarRolesDeUsuario(userId);
       setRolesActuales(r);
       toast.success(`Rol "${rolNombre}" removido`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo quitar el rol");
+    } catch (e: unknown) {
+      toast.error(getErrMsg(e) ?? "No se pudo quitar el rol");
     }
   }
 
@@ -179,7 +191,7 @@ export default function UsuarioShowPage() {
         </div>
       ) : (
         <>
-          {/* Card Perfil */}
+          {/* Card de perfil principal */}
           <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-4">
@@ -270,7 +282,7 @@ export default function UsuarioShowPage() {
             </nav>
           </div>
 
-          {/* Contenido por Tab */}
+          {/* Tab Content */}
           {tab === "perfil" && (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-white/10 bg-white/5 p-5">
@@ -355,7 +367,7 @@ export default function UsuarioShowPage() {
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
                     <input
                       value={filter}
-                      onChange={(e) => setFilter(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilter(e.target.value)}
                       placeholder="Buscar roles..."
                       className="w-full rounded-lg border border-white/10 bg-neutral-900 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500"
                     />
@@ -462,17 +474,13 @@ export default function UsuarioShowPage() {
                           </summary>
                           <div className="mt-2 grid gap-2 sm:grid-cols-2">
                             {a.old_values && (
-                              <pre className="rounded-lg border border-white/10 bg-black/30 p-2 text-xs text-neutral-300 whitespace-pre-wrap">
-                                {typeof a.old_values === "string"
-                                  ? a.old_values
-                                  : JSON.stringify(a.old_values, null, 2)}
+                              <pre className="rounded-lg border border-white/10 bg-black/30 p-2 text-xs text-neutral-300">
+                                {a.old_values}
                               </pre>
                             )}
                             {a.new_values && (
-                              <pre className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-2 text-xs text-blue-300 whitespace-pre-wrap">
-                                {typeof a.new_values === "string"
-                                  ? a.new_values
-                                  : JSON.stringify(a.new_values, null, 2)}
+                              <pre className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-2 text-xs text-blue-300">
+                                {a.new_values}
                               </pre>
                             )}
                           </div>

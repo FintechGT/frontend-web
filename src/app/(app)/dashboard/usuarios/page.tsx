@@ -1,8 +1,8 @@
+// src/app/(app)/dashboard/usuarios/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   listAdminUsuarios,
   type AdminUsuario,
@@ -44,8 +44,6 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
 
 /* ========= Page ========= */
 export default function UsuariosPage() {
-  const router = useRouter();
-
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
 
