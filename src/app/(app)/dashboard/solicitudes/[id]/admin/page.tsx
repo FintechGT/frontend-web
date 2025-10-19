@@ -21,8 +21,14 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-/* ==================== Helpers robustos ==================== */
-const fmtDate = (d?: string | null) => {
+/* =========================================================================
+   Helpers de formato y estado
+   -------------------------------------------------------------------------
+   - Se centralizan funciones puras de formato (fecha, normalización).
+   - Se evita duplicar lógica y se asegura consistencia visual.
+   ========================================================================= */
+const fmtDate = (d?: string | null): string => {
+  // Devuelve em dash cuando no hay valor o fecha inválida, para no romper UI.
   if (!d) return "—";
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return "—";
@@ -35,28 +41,27 @@ const fmtDate = (d?: string | null) => {
   });
 };
 
-// normaliza: minúsculas y sin acentos
-const norm = (s?: string | null) =>
+// Normaliza cadenas a minúsculas y remueve acentos; tolera null/undefined.
+const norm = (s?: string | null): string =>
   (s ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-const isPendiente = (s?: string | null) => {
+// Determina si un estado es "pendiente" (para habilitar acciones).
+const isPendiente = (s?: string | null): boolean => norm(s) === "pendiente";
+
+// El backend marca el artículo como "evaluado" cuando está aprobado.
+// Visualmente se muestra como aprobado (verde).
+const isArticuloAprobadoVisual = (s?: string | null): boolean => {
   const e = norm(s);
-  return e === "pendiente";
+  return e === "evaluado" || e === "aprobado";
 };
 
-// Artículo: el backend deja "evaluado" cuando aprobamos.
-// Lo mostramos como verde (aprobado) en UI.
-const isArticuloAprobadoVisual = (s?: string | null) => {
-  const e = norm(s);
-  return e === "evaluado" || e === "aprobado"; // por si en el futuro llega "aprobado"
-};
+const isArticuloRechazado = (s?: string | null): boolean => norm(s) === "rechazado";
 
-const isArticuloRechazado = (s?: string | null) => norm(s) === "rechazado";
-
-const badgeArticulo = (s?: string | null) => {
+// Devuelve clases de estilo del chip del artículo según estado.
+const badgeArticulo = (s?: string | null): string => {
   if (isArticuloAprobadoVisual(s))
     return "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
   if (isArticuloRechazado(s))
@@ -64,14 +69,15 @@ const badgeArticulo = (s?: string | null) => {
   return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
 };
 
-const iconArticulo = (s?: string | null) => {
+// Devuelve el ícono adecuado según el estado del artículo.
+const iconArticulo = (s?: string | null): React.ReactElement => {
   if (isArticuloAprobadoVisual(s)) return <CheckCircle2 className="size-3" />;
   if (isArticuloRechazado(s)) return <XCircle className="size-3" />;
   return <Clock className="size-3" />;
 };
 
-// Solicitud: chips para el estado de la solicitud (pendiente, en_revision, evaluada, rechazada)
-const badgeSolicitud = (s?: string | null) => {
+// Devuelve clases de estilo del chip de la solicitud según estado.
+const badgeSolicitud = (s?: string | null): string => {
   const e = norm(s);
   if (e === "evaluada")
     return "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
@@ -79,29 +85,38 @@ const badgeSolicitud = (s?: string | null) => {
     return "border border-red-500/30 bg-red-500/10 text-red-300";
   if (e === "en_revision")
     return "border border-blue-500/30 bg-blue-500/10 text-blue-300";
-  return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300"; // pendiente/otros
+  return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
 };
 
-// Mapeo UI → API para Solicitud
-// Si pulsas “Aprobar” en UI, el estado de la SOLICITUD va a "evaluada".
-const mapEstadoSolicitudUIToAPI = (ui: "aprobada" | "rechazada"): "evaluada" | "rechazada" =>
-  ui === "aprobada" ? "evaluada" : "rechazada";
+// Mapea la intención de UI a los valores aceptados por la API para la SOLICITUD.
+const mapEstadoSolicitudUIToAPI = (
+  ui: "aprobada" | "rechazada"
+): "evaluada" | "rechazada" => (ui === "aprobada" ? "evaluada" : "rechazada");
 
-/* ==================== Página ==================== */
-export default function AdminSolicitudDetallePage() {
+/* =========================================================================
+   Page Component (AdminSolicitudDetallePage)
+   -------------------------------------------------------------------------
+   - Página de detalle administrativo de una solicitud.
+   - Se prioriza robustez: control de errores y estados de carga/envío.
+   - No se usan `any`; se tipan utilidades y callbacks.
+   ========================================================================= */
+export default function AdminSolicitudDetallePage(): React.ReactElement {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = Number(params?.id);
 
+  // Estado local: carga, error, datos y "submitting" para deshabilitar botones.
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<SolicitudDetalleAdmin | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
+  // Se define la carga con useCallback para reutilizarla tras acciones (reload).
   const load = React.useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+
       if (!Number.isFinite(id)) {
         setError("ID inválido");
         setData(null);
@@ -117,11 +132,13 @@ export default function AdminSolicitudDetallePage() {
     }
   }, [id]);
 
+  // Al montar o cambiar el id, se dispara la carga.
   React.useEffect(() => {
     void load();
   }, [load]);
 
-  async function onCambiarEstado(uiNuevo: "aprobada" | "rechazada") {
+  // Cambia el estado de la solicitud completo (aprobada/rechazada).
+  async function onCambiarEstado(uiNuevo: "aprobada" | "rechazada"): Promise<void> {
     if (!data) return;
     const apiNuevo = mapEstadoSolicitudUIToAPI(uiNuevo);
     const ok = confirm(
@@ -139,7 +156,11 @@ export default function AdminSolicitudDetallePage() {
     }
   }
 
-  async function onEvaluarArticuloWrapper(id_articulo: number, payload: EvaluarArticuloPayload) {
+  // Wrapper para evaluar un artículo (aprobar/rechazar) y refrescar.
+  async function onEvaluarArticuloWrapper(
+    id_articulo: number,
+    payload: EvaluarArticuloPayload
+  ): Promise<void> {
     try {
       setSubmitting(true);
       await evaluarArticulo(id_articulo, payload);
@@ -151,8 +172,11 @@ export default function AdminSolicitudDetallePage() {
     }
   }
 
-  /* ====== UI estados ====== */
+  /* -------------------------------------
+     Estados de interfaz: Cargando / Error
+     ------------------------------------- */
   if (loading) {
+    // Mientras carga, se muestra un spinner central para feedback claro.
     return (
       <div className="grid place-items-center py-16 text-neutral-400">
         <Loader2 className="mr-2 size-6 animate-spin" />
@@ -162,6 +186,7 @@ export default function AdminSolicitudDetallePage() {
   }
 
   if (error || !data) {
+    // En error o sin datos, se ofrece navegación para volver al listado.
     return (
       <div className="space-y-4">
         <button
@@ -180,11 +205,14 @@ export default function AdminSolicitudDetallePage() {
     );
   }
 
+  // Si hay datos, se desestructura para uso más legible.
   const { cliente, articulos, resumen } = data;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* ===========================================================
+          Encabezado con acciones de solicitud (aprobar / rechazar)
+          =========================================================== */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button
@@ -195,7 +223,11 @@ export default function AdminSolicitudDetallePage() {
             Volver
           </button>
           <h1 className="text-xl font-semibold">Solicitud #{data.id_solicitud}</h1>
-          <span className={`rounded-md px-2 py-0.5 text-xs capitalize ${badgeSolicitud(data.estado)}`}>
+          <span
+            className={`rounded-md px-2 py-0.5 text-xs capitalize ${badgeSolicitud(
+              data.estado
+            )}`}
+          >
             {data.estado ?? "pendiente"}
           </span>
         </div>
@@ -220,7 +252,9 @@ export default function AdminSolicitudDetallePage() {
         </div>
       </div>
 
-      {/* Info principal */}
+      {/* ===========================================================
+          Datos del cliente + Resumen de artículos
+          =========================================================== */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5 md:col-span-2">
           <h2 className="mb-3 text-sm font-semibold text-neutral-300">Datos del cliente</h2>
@@ -270,7 +304,9 @@ export default function AdminSolicitudDetallePage() {
         </div>
       </div>
 
-      {/* Artículos */}
+      {/* ===========================================================
+          Listado de artículos con acciones (aprobar / rechazar)
+          =========================================================== */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="mb-4 flex items-center gap-2">
           <Package className="size-4 text-blue-300" />
@@ -284,7 +320,10 @@ export default function AdminSolicitudDetallePage() {
           {articulos.map((a) => {
             const puedeAprobar = isPendiente(a.estado);
             return (
-              <div key={a.id_articulo} className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <div
+                key={a.id_articulo}
+                className="rounded-xl border border-white/10 bg-black/20 p-4"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -295,26 +334,37 @@ export default function AdminSolicitudDetallePage() {
                         {a.tipo_nombre ?? "Artículo"}
                       </span>
                       {a.condicion && (
-                        <span className="text-xs capitalize text-neutral-400">· {a.condicion}</span>
+                        <span className="text-xs capitalize text-neutral-400">
+                          · {a.condicion}
+                        </span>
                       )}
                     </div>
+
                     <p className="mt-1 text-sm text-neutral-300">{a.descripcion}</p>
+
                     <div className="mt-2 text-xs text-neutral-400">
-                      Valor estimado: <span className="font-mono">Q {a.valor_estimado}</span>
+                      Valor estimado:{" "}
+                      <span className="font-mono">Q {a.valor_estimado}</span>
                       {a.valor_aprobado != null && (
                         <>
                           {" "}
                           · Valor aprobado:{" "}
-                          <span className="font-mono text-emerald-300">Q {a.valor_aprobado}</span>
+                          <span className="font-mono text-emerald-300">
+                            Q {a.valor_aprobado}
+                          </span>
                         </>
                       )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${badgeArticulo(a.estado)}`}>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${badgeArticulo(
+                        a.estado
+                      )}`}
+                    >
                       {iconArticulo(a.estado)}
-                      {/* mostramos el texto tal cual venga */}
+                      {/* Se muestra el texto tal cual llega del backend */}
                       {a.estado ?? "pendiente"}
                     </span>
 
@@ -325,7 +375,8 @@ export default function AdminSolicitudDetallePage() {
                           onClick={() =>
                             onEvaluarArticuloWrapper(a.id_articulo, {
                               accion: "aprobar",
-                              valor_aprobado: a.valor_estimado ?? 0, // puedes abrir modal para ajustar
+                              // Se sugiere valor estimado como base; en el futuro podría abrirse un modal.
+                              valor_aprobado: a.valor_estimado ?? 0,
                               plazo_dias: 30,
                             })
                           }
@@ -333,6 +384,7 @@ export default function AdminSolicitudDetallePage() {
                         >
                           Aprobar
                         </button>
+
                         <button
                           disabled={submitting}
                           onClick={() =>
@@ -350,7 +402,7 @@ export default function AdminSolicitudDetallePage() {
                   </div>
                 </div>
 
-                {/* Fotos */}
+                {/* Bloque de fotos (colapsable) */}
                 {a.fotos?.length ? (
                   <details className="mt-3">
                     <summary className="cursor-pointer text-xs text-neutral-400">
@@ -358,7 +410,10 @@ export default function AdminSolicitudDetallePage() {
                     </summary>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {a.fotos.map((f) => (
-                        <div key={f.id_foto} className="overflow-hidden rounded-lg border border-white/10">
+                        <div
+                          key={f.id_foto}
+                          className="overflow-hidden rounded-lg border border-white/10"
+                        >
                           <Image
                             src={f.url}
                             alt={`Foto ${f.id_foto}`}
@@ -381,11 +436,21 @@ export default function AdminSolicitudDetallePage() {
   );
 }
 
-/* ==================== Util ==================== */
+/* =========================================================================
+   Utilidades de error tipadas (sin `any`)
+   -------------------------------------------------------------------------
+   - Se define un type guard para objetos con `message` string.
+   - Evita usar "as any" y satisface `@typescript-eslint/no-explicit-any`.
+   ========================================================================= */
+function isRecordWithMessage(value: unknown): value is { message: string } {
+  if (typeof value !== "object" || value === null) return false;
+  // Se usa acceso seguro vía Record<string, unknown> para no caer en `any`.
+  const rec = value as Record<string, unknown>;
+  return typeof rec.message === "string";
+}
+
 function getErrMsg(err: unknown): string {
   if (err instanceof Error) return err.message;
-  if (err && typeof err === "object" && "message" in err && typeof (err as any).message === "string") {
-    return (err as any).message;
-  }
+  if (isRecordWithMessage(err)) return err.message;
   return "Error desconocido";
 }

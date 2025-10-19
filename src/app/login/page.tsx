@@ -1,26 +1,36 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 import { loginUser, loginWithGoogle, saveToken, type LoginInput } from "@/app/services/auth";
 
+/* =========================================================================
+   Utilidad segura para mensajes de error (sin `any`)
+   -------------------------------------------------------------------------
+   - Se centraliza la obtención de mensaje legible para mostrar en toasts.
+   ========================================================================= */
 function getErrorMessage(err: unknown, fallback = "Error al iniciar sesión"): string {
   if (err instanceof Error) return err.message || fallback;
   if (typeof err === "string") return err;
   return fallback;
 }
 
-export default function LoginPage() {
-  const router = useRouter();
+/* =========================================================================
+   Página de Login
+   -------------------------------------------------------------------------
+   - Se evita `useRouter` para no tener warnings de variable sin uso.
+   - Tras iniciar sesión, se fuerza navegación con `window.location.href`.
+   ========================================================================= */
+export default function LoginPage():React.ReactElement {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPass, setShowPass] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  // Envía credenciales al backend; limpia storage y guarda token.
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     setLoading(true);
     try {
@@ -29,37 +39,33 @@ export default function LoginPage() {
         password,
       };
       const { access_token } = await loginUser(payload);
-      
-      // ✅ Limpiar TODO antes de guardar el nuevo token
+
+      // Limpia todo antes de guardar el nuevo token para evitar estados inconsistentes.
       localStorage.clear();
       saveToken(access_token);
-      
+
       toast.success("Sesión iniciada");
-      
-      // ✅ IMPORTANTE: Forzar recarga completa de la página
+      // Redirección dura para recargar contexto de la App.
       window.location.href = "/dashboard";
-      
     } catch (err) {
       toast.error(getErrorMessage(err));
       setLoading(false);
     }
   }
 
-  async function onGoogleSuccess(id_token: string) {
+  // Login con Google vía id_token
+  async function onGoogleSuccess(id_token: string): Promise<void> {
     try {
       setLoading(true);
-      
-      // ✅ Limpiar TODO antes de guardar el nuevo token
+
+      // Limpia todo antes de guardar el nuevo token.
       localStorage.clear();
-      
+
       const { access_token } = await loginWithGoogle(id_token);
       saveToken(access_token);
-      
+
       toast.success("Sesión iniciada con Google");
-      
-      // ✅ IMPORTANTE: Forzar recarga completa de la página
       window.location.href = "/dashboard";
-      
     } catch (err) {
       toast.error(getErrorMessage(err, "No se pudo iniciar con Google"));
       setLoading(false);
@@ -74,6 +80,7 @@ export default function LoginPage() {
       >
         <h1 className="text-2xl font-bold text-center">Iniciar sesión</h1>
 
+        {/* Campo: correo */}
         <label className="block">
           <span className="text-sm text-neutral-300">Correo</span>
           <input
@@ -84,9 +91,11 @@ export default function LoginPage() {
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
             required
             disabled={loading}
+            autoComplete="email"
           />
         </label>
 
+        {/* Campo: contraseña con toggle de visibilidad */}
         <label className="block">
           <span className="text-sm text-neutral-300">Contraseña</span>
           <div className="relative">
@@ -99,6 +108,7 @@ export default function LoginPage() {
               required
               minLength={6}
               disabled={loading}
+              autoComplete="current-password"
             />
             <button
               type="button"
@@ -112,6 +122,7 @@ export default function LoginPage() {
           </div>
         </label>
 
+        {/* Botón principal */}
         <button
           disabled={loading}
           className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition"
@@ -119,17 +130,20 @@ export default function LoginPage() {
           {loading ? "Entrando…" : "Entrar"}
         </button>
 
+        {/* Separador social login */}
         <div className="flex items-center gap-3 my-2">
           <div className="h-px flex-1 bg-white/10" />
           <span className="text-xs text-neutral-400">o continúa con</span>
           <div className="h-px flex-1 bg-white/10" />
         </div>
 
+        {/* Botón Google */}
         <GoogleSignInButton
           onSuccess={onGoogleSuccess}
           onError={(e) => toast.error(getErrorMessage(e, "No se pudo iniciar con Google"))}
         />
 
+        {/* Enlace a registro */}
         <p className="text-xs text-neutral-400 text-center">
           ¿No tienes cuenta?{" "}
           <a className="text-blue-400 hover:underline" href="/register">

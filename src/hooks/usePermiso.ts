@@ -1,27 +1,28 @@
 // src/hooks/usePermiso.ts
 "use client";
 
-import * as React from "react";
 import { useAuth } from "@/app/AppLayoutClient";
 
+/* =========================================================================
+   Hook: usePermiso
+   -------------------------------------------------------------------------
+   - Determina si el usuario autenticado posee al menos uno de los permisos
+     y/o roles requeridos.
+   - Retorna `false` mientras la sesión está cargando o si no hay usuario.
+   - No usa `React` directamente para evitar el warning de import no usado.
+   ========================================================================= */
 export function usePermiso(
   input: string | string[] | { permisos?: string[]; roles?: string[] }
 ): boolean {
   const { user, permisos, roles, loading } = useAuth();
 
-  // Mientras carga, no permitir acceso
-  if (loading) {
-    console.log("🔄 usePermiso: Cargando permisos...");
-    return false;
-  }
+  // Mientras se resuelve la autenticación, no concede acceso.
+  if (loading) return false;
 
-  // Si no hay usuario, no tiene permisos
-  if (!user) {
-    console.log("❌ usePermiso: Sin usuario autenticado");
-    return false;
-  }
+  // Sin usuario autenticado, no hay permisos.
+  if (!user) return false;
 
-  // Normalizar entrada
+  // Normaliza la entrada en dos listas: permisos y roles requeridos.
   let permisosRequeridos: string[] = [];
   let rolesRequeridos: string[] = [];
 
@@ -34,35 +35,24 @@ export function usePermiso(
     rolesRequeridos = input.roles ?? [];
   }
 
-  // Debug: Mostrar en consola qué se está verificando
-  console.log("🔍 usePermiso verificando:", {
-    permisosRequeridos,
-    rolesRequeridos,
-    permisosUsuario: permisos,
-    rolesUsuario: roles
-  });
+  // Normaliza a minúsculas para comparación insensible a mayúsculas.
+  const minePerms = (permisos ?? []).map((p) => p.toLowerCase());
+  const mineRoles = (roles ?? []).map((r) => r.toLowerCase());
 
-  // Verificar permisos
-  const tienePermiso = permisosRequeridos.length === 0
-    ? true
-    : permisosRequeridos.some((p) =>
-        (permisos ?? []).some(
-          (mine) => mine.toLowerCase() === p.toLowerCase()
-        )
-      );
+  const needPerms = permisosRequeridos.map((p) => p.toLowerCase());
+  const needRoles = rolesRequeridos.map((r) => r.toLowerCase());
 
-  // Verificar roles
-  const tieneRol = rolesRequeridos.length === 0
-    ? true
-    : rolesRequeridos.some((r) =>
-        (roles ?? []).some(
-          (mine) => mine.toUpperCase() === r.toUpperCase()
-        )
-      );
+  // Regla: si no se piden permisos, se considera que pasa esa parte.
+  const tienePermiso =
+    needPerms.length === 0
+      ? true
+      : needPerms.some((p) => minePerms.includes(p));
 
-  const resultado = tienePermiso && tieneRol;
-  
-  console.log(`✅ usePermiso resultado:`, resultado);
-  
-  return resultado;
+  // Regla: si no se piden roles, se considera que pasa esa parte.
+  const tieneRol =
+    needRoles.length === 0
+      ? true
+      : needRoles.some((r) => mineRoles.includes(r));
+
+  return tienePermiso && tieneRol;
 }

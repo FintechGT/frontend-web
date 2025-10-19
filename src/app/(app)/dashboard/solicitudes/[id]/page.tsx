@@ -6,7 +6,6 @@ import Image from "next/image";
 import api from "@/lib/api";
 import {
   ArrowLeft,
-  Loader2,
   AlertCircle,
   Package,
   Clock,
@@ -15,7 +14,9 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-/* ==================== Tipos ==================== */
+/* =========================================================================
+   Tipos de dominio mínimos para la vista de usuario
+   ========================================================================= */
 type Foto = {
   id_foto: number;
   url: string;
@@ -41,8 +42,10 @@ type SolicitudDetalle = {
   articulos: Articulo[];
 };
 
-/* ==================== Helpers robustos ==================== */
-const fmtDate = (d?: string | null) => {
+/* =========================================================================
+   Helpers puros de formato y estado (sin efectos colaterales)
+   ========================================================================= */
+const fmtDate = (d?: string | null): string => {
   if (!d) return "—";
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return "—";
@@ -55,17 +58,16 @@ const fmtDate = (d?: string | null) => {
   });
 };
 
-const fmtMoney = (n?: number | null) =>
+const fmtMoney = (n?: number | null): string =>
   typeof n === "number" ? `Q ${n.toLocaleString()}` : "—";
 
-// normaliza, quita acentos y pasa a minúsculas; tolera null/undefined
-const norm = (s?: string | null) =>
+const norm = (s?: string | null): string =>
   (s ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-const badgeByEstado = (estado?: string | null) => {
+const badgeByEstado = (estado?: string | null): string => {
   const e = norm(estado);
   if (e.startsWith("aproba"))
     return "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
@@ -74,7 +76,7 @@ const badgeByEstado = (estado?: string | null) => {
   return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
 };
 
-const iconByEstado = (estado?: string | null) => {
+const iconByEstado = (estado?: string | null): React.ReactElement => {
   const e = norm(estado);
   if (e.startsWith("aproba")) return <CheckCircle2 className="size-3" />;
   if (e.startsWith("rechaza")) return <XCircle className="size-3" />;
@@ -97,17 +99,12 @@ function buildResumen(articulos: Articulo[]) {
     if (typeof a.valor_estimado === "number") sumEstimado += a.valor_estimado;
     if (typeof a.valor_aprobado === "number") sumAprobado += a.valor_aprobado ?? 0;
   }
-  return {
-    total: articulos.length,
-    aprobados,
-    rechazados,
-    pendientes,
-    sumEstimado,
-    sumAprobado,
-  };
+  return { total: articulos.length, aprobados, rechazados, pendientes, sumEstimado, sumAprobado };
 }
 
-/* ==================== Subcomponentes ==================== */
+/* =========================================================================
+   Subcomponentes presentacionales (sin estado global)
+   ========================================================================= */
 function TimelineEstado({ estado }: { estado?: string | null }) {
   const e = norm(estado);
   const pasos = [
@@ -176,8 +173,10 @@ function SkeletonLine({ w = "w-full" }: { w?: string }) {
   return <div className={`h-4 animate-pulse rounded bg-white/10 ${w}`} />;
 }
 
-/* ==================== Página ==================== */
-export default function SolicitudDetalleUsuarioPage() {
+/* =========================================================================
+   Página de detalle de solicitud para el usuario (sin privilegios admin)
+   ========================================================================= */
+export default function SolicitudDetalleUsuarioPage(): React.ReactElement {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = Number(params?.id);
@@ -212,7 +211,9 @@ export default function SolicitudDetalleUsuarioPage() {
     void load();
   }, [load]);
 
-  /* ====== Carga / Error ====== */
+  /* -------------------------------------
+     Estados de interfaz: Cargando / Error
+     ------------------------------------- */
   if (loading) {
     return (
       <div className="space-y-6">
@@ -263,7 +264,9 @@ export default function SolicitudDetalleUsuarioPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* ===========================================================
+          Encabezado
+          =========================================================== */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button
@@ -276,7 +279,11 @@ export default function SolicitudDetalleUsuarioPage() {
         </div>
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold">Solicitud #{data.id_solicitud}</h1>
-          <span className={`rounded-md px-2 py-0.5 text-xs capitalize ${badgeByEstado(data.estado)}`}>
+          <span
+            className={`rounded-md px-2 py-0.5 text-xs capitalize ${badgeByEstado(
+              data.estado
+            )}`}
+          >
             {data.estado ?? "pendiente"}
           </span>
         </div>
@@ -285,14 +292,17 @@ export default function SolicitudDetalleUsuarioPage() {
         </div>
       </div>
 
-      {/* Timeline */}
+      {/* ===========================================================
+          Timeline de estado
+          =========================================================== */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <TimelineEstado estado={data.estado} />
       </div>
 
-      {/* Bloque principal: Datos + Resumen */}
+      {/* ===========================================================
+          Datos + Resumen
+          =========================================================== */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Datos de envío */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5 md:col-span-2">
           <h2 className="mb-3 text-sm font-semibold text-neutral-300">Datos de envío</h2>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -311,7 +321,6 @@ export default function SolicitudDetalleUsuarioPage() {
           </div>
         </div>
 
-        {/* Resumen */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <h2 className="mb-3 text-sm font-semibold text-neutral-300">Resumen</h2>
           <div className="space-y-2 text-sm">
@@ -339,13 +348,17 @@ export default function SolicitudDetalleUsuarioPage() {
             </div>
             <div className="flex items-center justify-between">
               <span>Valor aprobado total</span>
-              <span className="font-mono text-emerald-300">{fmtMoney(resumen.sumAprobado)}</span>
+              <span className="font-mono text-emerald-300">
+                {fmtMoney(resumen.sumAprobado)}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Artículos */}
+      {/* ===========================================================
+          Artículos
+          =========================================================== */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="mb-4 flex items-center gap-2">
           <Package className="size-4 text-blue-300" />
@@ -365,7 +378,10 @@ export default function SolicitudDetalleUsuarioPage() {
         ) : (
           <div className="space-y-3">
             {articulos.map((a) => (
-              <div key={a.id_articulo} className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <div
+                key={a.id_articulo}
+                className="rounded-xl border border-white/10 bg-black/20 p-4"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
@@ -376,14 +392,17 @@ export default function SolicitudDetalleUsuarioPage() {
                         {a.tipo_nombre ?? "Artículo"}
                       </span>
                       {a.condicion && (
-                        <span className="text-xs capitalize text-neutral-400">· {a.condicion}</span>
+                        <span className="text-xs capitalize text-neutral-400">
+                          · {a.condicion}
+                        </span>
                       )}
                     </div>
 
                     <p className="mt-1 text-sm text-neutral-300">{a.descripcion}</p>
 
                     <div className="mt-2 text-xs text-neutral-400">
-                      Valor estimado: <span className="font-mono">{fmtMoney(a.valor_estimado)}</span>
+                      Valor estimado:{" "}
+                      <span className="font-mono">{fmtMoney(a.valor_estimado)}</span>
                       {a.valor_aprobado != null && (
                         <>
                           {" "}
@@ -398,7 +417,7 @@ export default function SolicitudDetalleUsuarioPage() {
 
                   <span
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${badgeByEstado(
-                      a.estado,
+                      a.estado
                     )}`}
                   >
                     {iconByEstado(a.estado)}
@@ -406,7 +425,7 @@ export default function SolicitudDetalleUsuarioPage() {
                   </span>
                 </div>
 
-                {/* Fotos */}
+                {/* Fotos (colapsable) */}
                 {a.fotos && a.fotos.length > 0 ? (
                   <details className="mt-3">
                     <summary className="cursor-pointer text-xs text-neutral-400 hover:text-neutral-300">
@@ -414,7 +433,10 @@ export default function SolicitudDetalleUsuarioPage() {
                     </summary>
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                       {a.fotos.map((f) => (
-                        <div key={f.id_foto} className="overflow-hidden rounded-lg border border-white/10">
+                        <div
+                          key={f.id_foto}
+                          className="overflow-hidden rounded-lg border border-white/10"
+                        >
                           <Image
                             src={f.url}
                             alt={`Foto ${f.id_foto}`}
@@ -439,11 +461,17 @@ export default function SolicitudDetalleUsuarioPage() {
   );
 }
 
-/* ==================== Util ==================== */
+/* =========================================================================
+   Utilidades de error tipadas (sin `any`) para cumplir ESLint
+   ========================================================================= */
+function isRecordWithMessage(value: unknown): value is { message: string } {
+  if (typeof value !== "object" || value === null) return false;
+  const rec = value as Record<string, unknown>;
+  return typeof rec.message === "string";
+}
+
 function getErrMsg(err: unknown): string {
   if (err instanceof Error) return err.message;
-  if (err && typeof err === "object" && "message" in err && typeof (err as any).message === "string") {
-    return (err as any).message;
-  }
+  if (isRecordWithMessage(err)) return err.message;
   return "Error desconocido";
 }

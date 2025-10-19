@@ -12,20 +12,24 @@ import {
 import { ArrowLeft, Plus, Trash2, Upload, AlertCircle, Loader2 } from "lucide-react";
 import { usePermiso } from "@/hooks/usePermiso";
 
-/* ===== Tipos de formulario ===== */
+/* =========================================================================
+   Tipos de formulario y utilitarios de tipado
+   -------------------------------------------------------------------------
+   - Se modelan los campos del formulario con precisión para evitar `any`.
+   - Se provee un helper genérico para actualizar campos de artículos.
+   ========================================================================= */
 type Metodo = "domicilio" | "oficina";
 type Condicion = "nuevo" | "seminuevo" | "usado" | "malo";
 
 type ArtForm = {
   id_tipo: number | "";
   descripcion: string;
-  valor_estimado: string; // como string para input controlado
+  valor_estimado: string; // Se mantiene como string para control del input
   condicion: Condicion | "";
   files: File[];
-  previews: string[]; // Object URLs
+  previews: string[]; // URLs temporales (Object URLs)
 };
 
-/** Tipado seguro para actualizar campos */
 type ArtFormField = keyof ArtForm;
 type ArtFormValue<F extends ArtFormField> =
   F extends "id_tipo" ? number | "" :
@@ -36,10 +40,18 @@ type ArtFormValue<F extends ArtFormField> =
   F extends "previews" ? string[] :
   never;
 
-export default function NuevaSolicitudPage() {
+/* =========================================================================
+   Componente de página: NuevaSolicitudPage
+   -------------------------------------------------------------------------
+   - Se asegura que los hooks se llamen siempre en el mismo orden (sin cond.)
+   - Se corrigen warnings de variables no utilizadas (i/j).
+   - Se limpia correctamente memoria de Object URLs.
+   ========================================================================= */
+export default function NuevaSolicitudPage(): React.ReactElement {
   const router = useRouter();
   const puedeCrear = usePermiso("solicitudes.create");
 
+  // Estado del formulario
   const [metodo, setMetodo] = React.useState<Metodo>("domicilio");
   const [direccion, setDireccion] = React.useState<string>("");
 
@@ -50,35 +62,38 @@ export default function NuevaSolicitudPage() {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Guardar todas las object URLs para revocarlas al desmontar
+  // Referencia para limpiar todas las Object URLs en unmount
   const objectUrlsRef = React.useRef<string[]>([]);
 
-  // Redirect si no tiene permiso
+  // Redirección si el usuario no tiene permiso para crear
   React.useEffect(() => {
     if (!puedeCrear) router.push("/dashboard/solicitudes");
   }, [puedeCrear, router]);
 
+  // Agrega un artículo vacío
   const addArticulo = (): void =>
     setArticulos((prev) => [
       ...prev,
       { id_tipo: 1, descripcion: "", valor_estimado: "", condicion: "", files: [], previews: [] },
     ]);
 
+  // Elimina un artículo por índice
   const removeArticulo = (idx: number): void =>
     setArticulos((prev) => prev.filter((_, i) => i !== idx));
 
+  // Manejo de archivos (solo imágenes, 5MB máx.)
   const onFiles = (idx: number, fileList: FileList | null): void => {
     if (!fileList) return;
     const files = Array.from(fileList);
 
-    // Validar tipo (solo imágenes)
+    // Valida tipo
     const nonImages = files.filter((f) => !f.type.startsWith("image/"));
     if (nonImages.length > 0) {
       setError("Solo se permiten imágenes (JPG, PNG, WebP).");
       return;
     }
 
-    // Validar tamaño máximo (5MB por imagen)
+    // Valida tamaño (5MB por imagen)
     const MAX_SIZE = 5 * 1024 * 1024;
     const invalidFiles = files.filter((f) => f.size > MAX_SIZE);
     if (invalidFiles.length > 0) {
@@ -86,6 +101,7 @@ export default function NuevaSolicitudPage() {
       return;
     }
 
+    // Genera previews y registra para limpiar en unmount
     const previews = files.map((f) => {
       const url = URL.createObjectURL(f);
       objectUrlsRef.current.push(url);
@@ -103,12 +119,13 @@ export default function NuevaSolicitudPage() {
     });
   };
 
+  // Elimina una foto de un artículo específico
   const removeFoto = (aIdx: number, fIdx: number): void => {
     setArticulos((prev) => {
       const copy = [...prev];
       const art = copy[aIdx];
 
-      // Liberar URL del preview
+      // Libera URL del preview
       const toRevoke = art.previews[fIdx];
       URL.revokeObjectURL(toRevoke);
       objectUrlsRef.current = objectUrlsRef.current.filter((u) => u !== toRevoke);
@@ -120,7 +137,7 @@ export default function NuevaSolicitudPage() {
     });
   };
 
-  /** ✅ Actualiza un campo del artículo con tipado seguro (sin ts-expect-error) */
+  // Actualiza un campo del artículo de forma segura (sin `any`)
   function updateArticulo<F extends ArtFormField>(
     idx: number,
     field: F,
@@ -133,11 +150,12 @@ export default function NuevaSolicitudPage() {
     });
   }
 
+  // Envío del formulario
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     setError(null);
 
-    // Validaciones
+    // Validaciones de alto nivel
     if (metodo === "domicilio" && !direccion.trim()) {
       setError("La dirección es obligatoria para método domicilio.");
       return;
@@ -146,6 +164,8 @@ export default function NuevaSolicitudPage() {
       setError("Agrega al menos un artículo.");
       return;
     }
+
+    // Validaciones por artículo
     for (const [i, a] of articulos.entries()) {
       if (!a.descripcion.trim()) {
         setError(`Artículo #${i + 1}: La descripción es requerida.`);
@@ -172,9 +192,10 @@ export default function NuevaSolicitudPage() {
       const FOLDER = "pignoraticios/solicitudes";
       const articulosConUrls: NuevaSolicitudPayload["articulos"] = [];
 
-      for (const [i, a] of articulos.entries()) {
+      for (const a of articulos) {
         const urls: string[] = [];
-        for (const [j, file] of a.files.entries()) {
+        // ⚠️ Se elimina la variable `j` no usada para evitar warning
+        for (const file of a.files) {
           const url = await uploadToCloudinary(file, FOLDER);
           urls.push(url);
         }
@@ -187,17 +208,17 @@ export default function NuevaSolicitudPage() {
         });
       }
 
-      // 2) Payload
+      // 2) Arma el payload final
       const payload: NuevaSolicitudPayload = {
         metodo_entrega: metodo,
         ...(metodo === "domicilio" ? { direccion_entrega: direccion.trim() } : {}),
         articulos: articulosConUrls,
       };
 
-      // 3) Enviar al backend
+      // 3) Llama al backend
       const creada = await crearSolicitudCompleta(payload);
 
-      // 4) Redirigir al detalle
+      // 4) Redirige al detalle
       router.push(`/dashboard/solicitudes/${creada.id_solicitud}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la solicitud.");
@@ -205,7 +226,7 @@ export default function NuevaSolicitudPage() {
     }
   }
 
-  // Limpiar TODOS los previews al desmontar
+  // Limpieza de todas las Object URLs al desmontar
   React.useEffect(() => {
     return () => {
       for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
@@ -213,7 +234,7 @@ export default function NuevaSolicitudPage() {
     };
   }, []);
 
-  // Si no tiene permiso
+  // Vista para usuarios sin permiso (no se condicionan hooks, solo el render)
   if (!puedeCrear) {
     return (
       <div className="mx-auto max-w-4xl space-y-6">
@@ -223,7 +244,7 @@ export default function NuevaSolicitudPage() {
             <div>
               <div className="font-medium text-red-400">Acceso denegado</div>
               <div className="mt-1 text-sm text-red-300">
-                No tienes permiso para crear solicitudes. Contacta al administrador.
+                No tiene permiso para crear solicitudes. Favor contactar al administrador.
               </div>
             </div>
           </div>
@@ -241,8 +262,10 @@ export default function NuevaSolicitudPage() {
     );
   }
 
+  // Render principal del formulario
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/dashboard/solicitudes"
@@ -254,6 +277,7 @@ export default function NuevaSolicitudPage() {
         <h1 className="text-xl font-semibold">Nueva solicitud</h1>
       </div>
 
+      {/* Mensaje de error global */}
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
           <div className="flex items-center gap-2">
@@ -263,8 +287,9 @@ export default function NuevaSolicitudPage() {
         </div>
       )}
 
+      {/* Formulario */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Datos de la solicitud */}
+        {/* Datos de entrega */}
         <section className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
           <h2 className="font-medium">Datos de entrega</h2>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -277,7 +302,7 @@ export default function NuevaSolicitudPage() {
                 disabled={submitting}
               >
                 <option value="domicilio">Domicilio (recogemos el artículo)</option>
-                <option value="oficina">Oficina (lo llevas tú)</option>
+                <option value="oficina">Oficina (lo lleva el usuario)</option>
               </select>
             </label>
 
@@ -479,7 +504,7 @@ export default function NuevaSolicitudPage() {
         {/* Resumen antes de enviar */}
         <section className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">
           <div className="text-sm">
-            <div className="mb-2 font-medium text-blue-400">Resumen de tu solicitud</div>
+            <div className="mb-2 font-medium text-blue-400">Resumen de la solicitud</div>
             <ul className="space-y-1 text-neutral-300">
               <li>
                 • Método: <span className="font-medium capitalize">{metodo}</span>
@@ -500,7 +525,9 @@ export default function NuevaSolicitudPage() {
                 • Valor estimado total:{" "}
                 <span className="font-medium text-emerald-400">
                   Q
-                  {articulos.reduce((sum, a) => sum + (Number(a.valor_estimado) || 0), 0).toFixed(2)}
+                  {articulos
+                    .reduce((sum, a) => sum + (Number(a.valor_estimado) || 0), 0)
+                    .toFixed(2)}
                 </span>
               </li>
             </ul>
@@ -536,17 +563,17 @@ export default function NuevaSolicitudPage() {
           </Link>
         </div>
 
-        {/* Info adicional */}
+        {/* Información adicional */}
         <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-neutral-400">
           <div className="mb-2 font-medium text-neutral-300">ℹ️ Información importante</div>
           <ul className="list-inside list-disc space-y-1">
             <li>Las fotos se subirán a la nube de forma segura.</li>
-            <li>El proceso de carga puede tardar unos segundos.</li>
-            <li>Una vez creada, tu solicitud será revisada por un valuador.</li>
-            <li>Recibirás notificaciones sobre el estado de tu solicitud.</li>
+            <li>El proceso de carga puede tardar algunos segundos.</li>
+            <li>Una vez creada, la solicitud será revisada por un valuador.</li>
+            <li>Se enviarán notificaciones sobre el estado de la solicitud.</li>
             {metodo === "domicilio" && (
               <li className="text-yellow-400">
-                Para domicilio: asegúrate de que la dirección sea correcta, nos contactaremos contigo.
+                Para domicilio: verificar que la dirección sea correcta; se realizará contacto.
               </li>
             )}
           </ul>
