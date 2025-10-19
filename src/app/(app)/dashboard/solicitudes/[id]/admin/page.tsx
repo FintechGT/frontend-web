@@ -10,32 +10,84 @@ import {
   type SolicitudDetalleAdmin,
   type EvaluarArticuloPayload,
 } from "@/app/services/adminSolicitudes";
-import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, XCircle, Clock, Package, ChevronDown } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Package,
+  ChevronDown,
+} from "lucide-react";
 
-/* =========== Helpers =========== */
-function getErrMsg(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (err && typeof err === "object" && "message" in err && typeof (err as { message?: unknown }).message === "string") {
-    return (err as { message: string }).message;
-  }
-  return "Error desconocido";
-}
-
-function fmtDate(d?: string | null): string {
+/* ==================== Helpers robustos ==================== */
+const fmtDate = (d?: string | null) => {
   if (!d) return "—";
   const dt = new Date(d);
-  return Number.isNaN(dt.getTime())
-    ? "—"
-    : dt.toLocaleString(undefined, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-}
+  if (Number.isNaN(dt.getTime())) return "—";
+  return dt.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
-/* =========== Page =========== */
+// normaliza: minúsculas y sin acentos
+const norm = (s?: string | null) =>
+  (s ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const isPendiente = (s?: string | null) => {
+  const e = norm(s);
+  return e === "pendiente";
+};
+
+// Artículo: el backend deja "evaluado" cuando aprobamos.
+// Lo mostramos como verde (aprobado) en UI.
+const isArticuloAprobadoVisual = (s?: string | null) => {
+  const e = norm(s);
+  return e === "evaluado" || e === "aprobado"; // por si en el futuro llega "aprobado"
+};
+
+const isArticuloRechazado = (s?: string | null) => norm(s) === "rechazado";
+
+const badgeArticulo = (s?: string | null) => {
+  if (isArticuloAprobadoVisual(s))
+    return "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  if (isArticuloRechazado(s))
+    return "border border-red-500/30 bg-red-500/10 text-red-300";
+  return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
+};
+
+const iconArticulo = (s?: string | null) => {
+  if (isArticuloAprobadoVisual(s)) return <CheckCircle2 className="size-3" />;
+  if (isArticuloRechazado(s)) return <XCircle className="size-3" />;
+  return <Clock className="size-3" />;
+};
+
+// Solicitud: chips para el estado de la solicitud (pendiente, en_revision, evaluada, rechazada)
+const badgeSolicitud = (s?: string | null) => {
+  const e = norm(s);
+  if (e === "evaluada")
+    return "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  if (e === "rechazada")
+    return "border border-red-500/30 bg-red-500/10 text-red-300";
+  if (e === "en_revision")
+    return "border border-blue-500/30 bg-blue-500/10 text-blue-300";
+  return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300"; // pendiente/otros
+};
+
+// Mapeo UI → API para Solicitud
+// Si pulsas “Aprobar” en UI, el estado de la SOLICITUD va a "evaluada".
+const mapEstadoSolicitudUIToAPI = (ui: "aprobada" | "rechazada"): "evaluada" | "rechazada" =>
+  ui === "aprobada" ? "evaluada" : "rechazada";
+
+/* ==================== Página ==================== */
 export default function AdminSolicitudDetallePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -69,13 +121,16 @@ export default function AdminSolicitudDetallePage() {
     void load();
   }, [load]);
 
-  async function onCambiarEstado(nuevo: string) {
+  async function onCambiarEstado(uiNuevo: "aprobada" | "rechazada") {
     if (!data) return;
-    const ok = confirm(`¿Cambiar el estado de la solicitud #${data.id_solicitud} a "${nuevo}"?`);
+    const apiNuevo = mapEstadoSolicitudUIToAPI(uiNuevo);
+    const ok = confirm(
+      `¿Cambiar el estado de la solicitud #${data.id_solicitud} a "${uiNuevo}"? (API: "${apiNuevo}")`
+    );
     if (!ok) return;
     try {
       setSubmitting(true);
-      await cambiarEstadoSolicitud(data.id_solicitud, nuevo);
+      await cambiarEstadoSolicitud(data.id_solicitud, apiNuevo);
       await load();
     } catch (e: unknown) {
       alert(getErrMsg(e));
@@ -84,10 +139,7 @@ export default function AdminSolicitudDetallePage() {
     }
   }
 
-  async function onEvaluarArticuloWrapper(
-    id_articulo: number,
-    payload: EvaluarArticuloPayload,
-  ) {
+  async function onEvaluarArticuloWrapper(id_articulo: number, payload: EvaluarArticuloPayload) {
     try {
       setSubmitting(true);
       await evaluarArticulo(id_articulo, payload);
@@ -99,6 +151,7 @@ export default function AdminSolicitudDetallePage() {
     }
   }
 
+  /* ====== UI estados ====== */
   if (loading) {
     return (
       <div className="grid place-items-center py-16 text-neutral-400">
@@ -142,8 +195,8 @@ export default function AdminSolicitudDetallePage() {
             Volver
           </button>
           <h1 className="text-xl font-semibold">Solicitud #{data.id_solicitud}</h1>
-          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs capitalize text-neutral-300">
-            {data.estado}
+          <span className={`rounded-md px-2 py-0.5 text-xs capitalize ${badgeSolicitud(data.estado)}`}>
+            {data.estado ?? "pendiente"}
           </span>
         </div>
 
@@ -229,7 +282,7 @@ export default function AdminSolicitudDetallePage() {
 
         <div className="space-y-3">
           {articulos.map((a) => {
-            const puedeAprobar = a.estado.toLowerCase() === "pendiente";
+            const puedeAprobar = isPendiente(a.estado);
             return (
               <div key={a.id_articulo} className="rounded-xl border border-white/10 bg-black/20 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -241,13 +294,16 @@ export default function AdminSolicitudDetallePage() {
                       <span className="text-sm font-medium capitalize">
                         {a.tipo_nombre ?? "Artículo"}
                       </span>
-                      <span className="text-xs capitalize text-neutral-400">· {a.condicion}</span>
+                      {a.condicion && (
+                        <span className="text-xs capitalize text-neutral-400">· {a.condicion}</span>
+                      )}
                     </div>
                     <p className="mt-1 text-sm text-neutral-300">{a.descripcion}</p>
                     <div className="mt-2 text-xs text-neutral-400">
-                      Valor estimado: <span className="font-mono">Q {a.valor_estimado}</span>{" "}
+                      Valor estimado: <span className="font-mono">Q {a.valor_estimado}</span>
                       {a.valor_aprobado != null && (
                         <>
+                          {" "}
                           · Valor aprobado:{" "}
                           <span className="font-mono text-emerald-300">Q {a.valor_aprobado}</span>
                         </>
@@ -256,23 +312,10 @@ export default function AdminSolicitudDetallePage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${
-                        a.estado === "aprobado"
-                          ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                          : a.estado === "rechazado"
-                          ? "border border-red-500/30 bg-red-500/10 text-red-300"
-                          : "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300"
-                      }`}
-                    >
-                      {a.estado === "aprobado" ? (
-                        <CheckCircle2 className="size-3" />
-                      ) : a.estado === "rechazado" ? (
-                        <XCircle className="size-3" />
-                      ) : (
-                        <Clock className="size-3" />
-                      )}
-                      {a.estado}
+                    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${badgeArticulo(a.estado)}`}>
+                      {iconArticulo(a.estado)}
+                      {/* mostramos el texto tal cual venga */}
+                      {a.estado ?? "pendiente"}
                     </span>
 
                     {puedeAprobar && (
@@ -282,7 +325,7 @@ export default function AdminSolicitudDetallePage() {
                           onClick={() =>
                             onEvaluarArticuloWrapper(a.id_articulo, {
                               accion: "aprobar",
-                              valor_aprobado: a.valor_estimado, // puedes abrir modal si quieres ajustar
+                              valor_aprobado: a.valor_estimado ?? 0, // puedes abrir modal para ajustar
                               plazo_dias: 30,
                             })
                           }
@@ -336,4 +379,13 @@ export default function AdminSolicitudDetallePage() {
       </div>
     </div>
   );
+}
+
+/* ==================== Util ==================== */
+function getErrMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err && typeof (err as any).message === "string") {
+    return (err as any).message;
+  }
+  return "Error desconocido";
 }
