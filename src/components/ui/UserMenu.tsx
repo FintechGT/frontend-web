@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut, Mail, Settings, User } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import api from "@/lib/api";
-import { clearToken } from "@/app/services/auth";
+import { useAuth } from "@/app/AppLayoutClient";
 
 type Usuario = {
   id_usuario: number;
@@ -31,10 +32,10 @@ function getInitials(nombre?: string, correo?: string) {
 
 export default function UserMenu() {
   const router = useRouter();
+  const { logout } = useAuth();
   const [open, setOpen] = React.useState(false);
   const [me, setMe] = React.useState<Usuario | null>(null);
 
-  // Cargar datos del usuario desde /usuarios/me (el que trae nombre/correo/teléfono/dirección)
   React.useEffect(() => {
     let alive = true;
     api
@@ -43,9 +44,7 @@ export default function UserMenu() {
         if (!alive) return;
         setMe(r.data as Usuario);
       })
-      .catch(() => {
-        /* silencioso: si falla, se queda en null y se muestran placeholders */
-      });
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -53,14 +52,14 @@ export default function UserMenu() {
 
   const initials = getInitials(me?.nombre, me?.correo);
 
-  function logout() {
-    clearToken();
-    router.push("/login");
+  function handleLogout() {
+    localStorage.clear();
+    logout();
+    window.location.href = "/login";
   }
 
   return (
     <>
-      {/* Botón en la topbar */}
       <button
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
@@ -75,7 +74,6 @@ export default function UserMenu() {
         </div>
       </button>
 
-      {/* Modal con acciones */}
       <Modal open={open} onClose={() => setOpen(false)} title="Tu cuenta">
         <div className="flex items-center gap-3">
           <div className="grid size-12 place-items-center rounded-full bg-blue-600 text-sm font-bold">
@@ -91,35 +89,41 @@ export default function UserMenu() {
         </div>
 
         <div className="mt-4 grid gap-2">
-          <a
+          <Link
             href="/dashboard/perfil"
             className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10"
             onClick={() => setOpen(false)}
           >
-            <User className="size-4" /> Ver perfil
-          </a>
-          <a
+            <User className="size-4" />
+            <span>Ver perfil</span>
+          </Link>
+
+          <Link
             href="/dashboard/perfil/editar"
             className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10"
             onClick={() => setOpen(false)}
           >
-            <Settings className="size-4" /> Editar perfil
-          </a>
-          <a
+            <Settings className="size-4" />
+            <span>Editar perfil</span>
+          </Link>
+
+          <Link
             href="/dashboard/configuracion"
             className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10"
             onClick={() => setOpen(false)}
           >
-            <Settings className="size-4" /> Configuración
-          </a>
+            <Settings className="size-4" />
+            <span>Configuración</span>
+          </Link>
         </div>
 
         <div className="mt-4 flex justify-end">
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-medium hover:bg-red-500"
           >
-            <LogOut className="size-4" /> Cerrar sesión
+            <LogOut className="size-4" />
+            <span>Cerrar sesión</span>
           </button>
         </div>
       </Modal>

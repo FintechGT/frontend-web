@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useAuth } from "@/app/AppLayoutClient";
 import { usePermiso } from "@/hooks/usePermiso";
 import { listMisSolicitudes, type Solicitud } from "@/app/services/solicitudes";
 import { obtenerEstadisticasSolicitudes, type AdminStats } from "@/app/services/adminSolicitudes";
-import { FileText, DollarSign, Calendar, TrendingUp, Users, AlertCircle } from "lucide-react";
+import { FileText, DollarSign, Calendar, TrendingUp, Users, AlertCircle, Loader2 } from "lucide-react";
 
 /* ===================== Utils ===================== */
 function getErrMsg(err: unknown): string {
@@ -24,25 +25,36 @@ function toKey(x: string | number): string {
   return String(x);
 }
 
-/** Intenta comparar por fecha; si no hay fecha, usa id numérico; si no, string. */
 function compareRecientes(a: Solicitud, b: Solicitud): number {
   const fa = a.created_at ?? a.fecha_envio ?? null;
   const fb = b.created_at ?? b.fecha_envio ?? null;
   if (fa && fb) {
     const da = new Date(fa).getTime();
     const db = new Date(fb).getTime();
-    if (!Number.isNaN(da) && !Number.isNaN(db)) return db - da; // desc
+    if (!Number.isNaN(da) && !Number.isNaN(db)) return db - da;
   }
   const ida = Number(a.id_solicitud);
   const idb = Number(b.id_solicitud);
-  if (!Number.isNaN(ida) && !Number.isNaN(idb)) return idb - ida; // desc
+  if (!Number.isNaN(ida) && !Number.isNaN(idb)) return idb - ida;
   return toKey(b.id_solicitud).localeCompare(toKey(a.id_solicitud));
 }
 
 /* ===================== Page ===================== */
 export default function DashboardPage() {
-  // Hook de permisos: se evalúa SIEMPRE antes de cualquier return.
-  const esAdmin = usePermiso(["ADMIN_SOLICITUDES_LISTAR", "usuarios.view", "valuacion.aprobar"]);
+  const { user, roles, loading: authLoading } = useAuth();
+  
+  // ✅ Verificar si es admin (por permisos O roles)
+  const tienePermisoAdmin = usePermiso([
+    "ADMIN_SOLICITUDES_LISTAR",
+    "usuarios.view",
+    "valuacion.aprobar"
+  ]);
+  
+  const esRolAdmin = roles.some(r => 
+    ["ADMINISTRADOR", "SUPERVISOR", "VALUADOR"].includes(r.toUpperCase())
+  );
+  
+  const esAdmin = tienePermisoAdmin || esRolAdmin;
 
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -50,11 +62,16 @@ export default function DashboardPage() {
   const [stats, setStats] = React.useState<AdminStats | null>(null);
 
   React.useEffect(() => {
+    // ✅ IMPORTANTE: No cargar datos hasta que termine de cargar la autenticación
+    if (authLoading) return;
+
     let alive = true;
     (async () => {
       try {
         setLoading(true);
         setError(null);
+
+        console.log("🔍 Cargando dashboard:", { esAdmin, roles, user });
 
         if (esAdmin) {
           const estadisticas = await obtenerEstadisticasSolicitudes();
@@ -72,9 +89,8 @@ export default function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, [esAdmin]);
+  }, [esAdmin, authLoading, roles, user]);
 
-  // ====== Hooks derivados (SIEMPRE antes de cualquier return) ======
   const proximoVenc = React.useMemo(() => {
     const fechas = items.map((s) => s.fecha_vencimiento).filter((f): f is string => Boolean(f));
     const min = fechas.length
@@ -88,19 +104,18 @@ export default function DashboardPage() {
     return sorted.slice(0, 4);
   }, [items]);
 
-  // KPIs usuario (no hooks, solo variables)
   const solicitudesActivas = items.length;
-  const montoPendienteQ = 0; // TODO: suma real desde API
-  const pagosRealizados = 0; // TODO: desde API
+  const montoPendienteQ = 0;
+  const pagosRealizados = 0;
 
-  // ====== Returns condicionales (después de TODOS los hooks) ======
-  if (loading) {
+  // ✅ Mostrar loader mientras carga la autenticación O los datos
+  if (authLoading || loading) {
     return (
       <div className="space-y-6">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <div className="flex items-center gap-2">
-            <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-            <span className="text-sm text-neutral-300">Cargando…</span>
+            <Loader2 className="size-4 animate-spin text-blue-400" />
+            <span className="text-sm text-neutral-300">Cargando dashboard…</span>
           </div>
         </div>
       </div>

@@ -29,12 +29,18 @@ export default function LoginPage() {
         password,
       };
       const { access_token } = await loginUser(payload);
+      
+      // ✅ Limpiar TODO antes de guardar el nuevo token
+      localStorage.clear();
       saveToken(access_token);
+      
       toast.success("Sesión iniciada");
-      router.push("/dashboard");
+      
+      // ✅ IMPORTANTE: Forzar recarga completa de la página
+      window.location.href = "/dashboard";
+      
     } catch (err) {
       toast.error(getErrorMessage(err));
-    } finally {
       setLoading(false);
     }
   }
@@ -42,13 +48,20 @@ export default function LoginPage() {
   async function onGoogleSuccess(id_token: string) {
     try {
       setLoading(true);
+      
+      // ✅ Limpiar TODO antes de guardar el nuevo token
+      localStorage.clear();
+      
       const { access_token } = await loginWithGoogle(id_token);
       saveToken(access_token);
+      
       toast.success("Sesión iniciada con Google");
-      router.push("/dashboard");
+      
+      // ✅ IMPORTANTE: Forzar recarga completa de la página
+      window.location.href = "/dashboard";
+      
     } catch (err) {
       toast.error(getErrorMessage(err, "No se pudo iniciar con Google"));
-    } finally {
       setLoading(false);
     }
   }
@@ -70,6 +83,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
             required
+            disabled={loading}
           />
         </label>
 
@@ -84,12 +98,14 @@ export default function LoginPage() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
               required
               minLength={6}
+              disabled={loading}
             />
             <button
               type="button"
               onClick={() => setShowPass((s) => !s)}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-200"
               aria-label={showPass ? "Ocultar contraseña" : "Mostrar contraseña"}
+              disabled={loading}
             >
               {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>

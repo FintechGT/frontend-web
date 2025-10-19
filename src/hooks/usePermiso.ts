@@ -1,46 +1,68 @@
 // src/hooks/usePermiso.ts
 "use client";
 
+import * as React from "react";
 import { useAuth } from "@/app/AppLayoutClient";
 
-type Input =
-  | string
-  | string[]
-  | { permisos?: string[]; roles?: string[] };
+export function usePermiso(
+  input: string | string[] | { permisos?: string[]; roles?: string[] }
+): boolean {
+  const { user, permisos, roles, loading } = useAuth();
 
-/**
- * Verifica permisos (useAuth().can) y opcionalmente roles
- * (roles se leen de localStorage["roles"], que puedes llenar con primeAuthCapabilitiesCache).
- */
-export function usePermiso(input: Input): boolean {
-  const { can } = useAuth();
-
-  let permisos: string[] = [];
-  let roles: string[] = [];
-
-  if (typeof input === "string") permisos = [input];
-  else if (Array.isArray(input)) permisos = input;
-  else if (input && typeof input === "object") {
-    permisos = input.permisos ?? [];
-    roles = input.roles ?? [];
+  // Mientras carga, no permitir acceso
+  if (loading) {
+    console.log("🔄 usePermiso: Cargando permisos...");
+    return false;
   }
 
-  // 1) Permisos
-  const passPerm =
-    permisos.length === 0 ? true : permisos.some((p) => !!can(p));
-
-  // 2) Roles (desde localStorage, si los tienes cacheados)
-  let passRol = true;
-  if (roles.length > 0 && typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("roles");
-      const mine = raw ? (JSON.parse(raw) as string[]) : [];
-      const mineUpper = mine.map((r) => r.toUpperCase());
-      passRol = roles.some((r) => mineUpper.includes(r.toUpperCase()));
-    } catch {
-      passRol = false;
-    }
+  // Si no hay usuario, no tiene permisos
+  if (!user) {
+    console.log("❌ usePermiso: Sin usuario autenticado");
+    return false;
   }
 
-  return passPerm && passRol;
+  // Normalizar entrada
+  let permisosRequeridos: string[] = [];
+  let rolesRequeridos: string[] = [];
+
+  if (typeof input === "string") {
+    permisosRequeridos = [input];
+  } else if (Array.isArray(input)) {
+    permisosRequeridos = input;
+  } else if (input && typeof input === "object") {
+    permisosRequeridos = input.permisos ?? [];
+    rolesRequeridos = input.roles ?? [];
+  }
+
+  // Debug: Mostrar en consola qué se está verificando
+  console.log("🔍 usePermiso verificando:", {
+    permisosRequeridos,
+    rolesRequeridos,
+    permisosUsuario: permisos,
+    rolesUsuario: roles
+  });
+
+  // Verificar permisos
+  const tienePermiso = permisosRequeridos.length === 0
+    ? true
+    : permisosRequeridos.some((p) =>
+        (permisos ?? []).some(
+          (mine) => mine.toLowerCase() === p.toLowerCase()
+        )
+      );
+
+  // Verificar roles
+  const tieneRol = rolesRequeridos.length === 0
+    ? true
+    : rolesRequeridos.some((r) =>
+        (roles ?? []).some(
+          (mine) => mine.toUpperCase() === r.toUpperCase()
+        )
+      );
+
+  const resultado = tienePermiso && tieneRol;
+  
+  console.log(`✅ usePermiso resultado:`, resultado);
+  
+  return resultado;
 }
