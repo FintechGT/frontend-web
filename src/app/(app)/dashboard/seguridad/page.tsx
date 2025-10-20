@@ -2,135 +2,68 @@
 "use client";
 
 import * as React from "react";
-import { Shield, AlertCircle, RotateCw } from "lucide-react";
-import api from "@/lib/api";
-import RolesTab from "./_components/RolesTab";
-import PermisosTab from "./_components/PermisosTab";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs.jsx";
 import ModulosTab from "./_components/ModulosTab";
+import PermisosTab from "./_components/PermisosTab";
+import RolesTab from "./_components/RolesTab";
+import { Shield } from "lucide-react";
 
-/** Tabs minimalistas sin dependencias externas */
-function Tabs({
-  tabs,
-  value,
-  onChange,
-}: {
-  tabs: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
+/* ============================================================
+   Página principal de Seguridad
+   ============================================================ */
+export default function SeguridadPage():React.ReactElement {
+  const [tab, setTab] = React.useState("roles");
+
   return (
-    <div>
-      <div className="mb-6 inline-flex rounded-xl border border-white/10 bg-black/30 p-1">
-        {tabs.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => onChange(t.value)}
-            className={`px-4 py-2 text-sm rounded-lg transition ${
-              value === t.value ? "bg-white/10 text-white" : "text-neutral-300 hover:bg-white/5"
+    <div className="space-y-6">
+      {/* Encabezado */}
+      <header className="flex items-center gap-3">
+        <Shield className="size-6 text-blue-400" />
+        <h1 className="text-2xl font-semibold tracking-tight">Seguridad y Accesos</h1>
+      </header>
+
+      {/* Tabs principales */}
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="flex flex-wrap gap-2 rounded-lg border border-white/10 bg-black/30 p-1">
+          <TabsTrigger
+            value="roles"
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "roles" ? "bg-blue-600 text-white" : "text-neutral-400 hover:text-white"
             }`}
           >
-            {t.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+            Roles
+          </TabsTrigger>
+          <TabsTrigger
+            value="permisos"
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "permisos" ? "bg-blue-600 text-white" : "text-neutral-400 hover:text-white"
+            }`}
+          >
+            Permisos
+          </TabsTrigger>
+          <TabsTrigger
+            value="modulos"
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "modulos" ? "bg-blue-600 text-white" : "text-neutral-400 hover:text-white"
+            }`}
+          >
+            Módulos
+          </TabsTrigger>
+        </TabsList>
 
-function getErrMsg(err: unknown): string {
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const r = (err as any).response;
-    const code = r?.status;
-    const msg = r?.data?.detail || r?.statusText || "Error";
-    if (code === 404) return "Endpoint no encontrado (404). Revisa rutas del backend.";
-    if (code === 401) return "No autorizado (401). Verifica el token/Authorization header.";
-    return `${code ?? ""} ${msg}`.trim();
-  }
-  if (err instanceof Error) return err.message;
-  return "Error desconocido";
-}
-
-function isAdmin(roles: string[]): boolean {
-  return roles.map((r) => r.toLowerCase()).some((r) => r === "admin" || r === "administrador");
-}
-
-export default function SeguridadDashboard() {
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [allowed, setAllowed] = React.useState(false);
-
-  const [tab, setTab] = React.useState<"roles" | "permisos" | "modulos">("roles");
-
-  const bootstrap = React.useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const { data } = await api.get("/seguridad/mis-roles");
-      const roles = Array.isArray(data) ? data : Array.isArray(data?.roles) ? data.roles : [];
-      setAllowed(isAdmin(roles));
-    } catch (e) {
-      setError(getErrMsg(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void bootstrap();
-  }, [bootstrap]);
-
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <Shield className="size-5 text-blue-400" />
-        <h1 className="text-2xl font-semibold">Seguridad</h1>
-        <button
-          onClick={() => void bootstrap()}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5"
-          title="Refrescar"
-        >
-          <RotateCw className="size-4" />
-          Refrescar
-        </button>
-      </div>
-
-      {loading && (
-        <div className="flex items-center justify-center rounded-xl border border-white/10 bg-white/5 p-10 text-neutral-400">
-          <RotateCw className="mr-2 animate-spin" />
-          Cargando…
+        {/* Contenido de cada tab */}
+        <div className="mt-6">
+          <TabsContent value="roles">
+            <RolesTab />
+          </TabsContent>
+          <TabsContent value="permisos">
+            <PermisosTab />
+          </TabsContent>
+          <TabsContent value="modulos">
+            <ModulosTab />
+          </TabsContent>
         </div>
-      )}
-
-      {!loading && error && (
-        <div className="flex items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-red-400">
-          <AlertCircle className="mr-2" />
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && !allowed && (
-        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-6 text-yellow-300">
-          <AlertCircle className="mr-2 inline-block" />
-          Solo los usuarios con rol <b>ADMIN/ADMINISTRADOR</b> pueden gestionar Seguridad.
-        </div>
-      )}
-
-      {!loading && !error && allowed && (
-        <>
-          <Tabs
-            value={tab}
-            onChange={(v) => setTab(v as any)}
-            tabs={[
-              { value: "roles", label: "Roles" },
-              { value: "permisos", label: "Permisos" },
-              { value: "modulos", label: "Módulos" },
-            ]}
-          />
-          {tab === "roles" && <RolesTab />}
-          {tab === "permisos" && <PermisosTab />}
-          {tab === "modulos" && <ModulosTab />}
-        </>
-      )}
+      </Tabs>
     </div>
   );
 }
