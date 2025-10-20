@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs.jsx";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../../../components/ui/tabs";
 import ModulosTab from "./_components/ModulosTab";
 import PermisosTab from "./_components/PermisosTab";
 import RolesTab from "./_components/RolesTab";
