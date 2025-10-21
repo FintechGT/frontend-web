@@ -5,10 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   obtenerSolicitudDetalleAdmin,
-  evaluarArticulo,
+  aprobarArticulo,
+  rechazarArticulo,
   cambiarEstadoSolicitud,
+  generarContratoPrestamo,
+  obtenerReglasArticulos,
+  type ReglaTipoArticulo,
   type SolicitudDetalleAdmin,
-  type EvaluarArticuloPayload,
 } from "@/app/services/adminSolicitudes";
 import {
   ArrowLeft,
@@ -21,14 +24,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-/* =========================================================================
-   Helpers de formato y estado
-   -------------------------------------------------------------------------
-   - Se centralizan funciones puras de formato (fecha, normalización).
-   - Se evita duplicar lógica y se asegura consistencia visual.
-   ========================================================================= */
+/* ======================= Helpers ======================= */
 const fmtDate = (d?: string | null): string => {
-  // Devuelve em dash cuando no hay valor o fecha inválida, para no romper UI.
   if (!d) return "—";
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return "—";
@@ -41,26 +38,20 @@ const fmtDate = (d?: string | null): string => {
   });
 };
 
-// Normaliza cadenas a minúsculas y remueve acentos; tolera null/undefined.
 const norm = (s?: string | null): string =>
-  (s ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+  (s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-// Determina si un estado es "pendiente" (para habilitar acciones).
 const isPendiente = (s?: string | null): boolean => norm(s) === "pendiente";
+const isEvaluada = (s?: string | null): boolean =>
+  ["evaluada", "rechazada"].includes(norm(s));
 
-// El backend marca el artículo como "evaluado" cuando está aprobado.
-// Visualmente se muestra como aprobado (verde).
 const isArticuloAprobadoVisual = (s?: string | null): boolean => {
   const e = norm(s);
   return e === "evaluado" || e === "aprobado";
 };
+const isArticuloRechazado = (s?: string | null): boolean =>
+  norm(s) === "rechazado";
 
-const isArticuloRechazado = (s?: string | null): boolean => norm(s) === "rechazado";
-
-// Devuelve clases de estilo del chip del artículo según estado.
 const badgeArticulo = (s?: string | null): string => {
   if (isArticuloAprobadoVisual(s))
     return "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
@@ -69,14 +60,12 @@ const badgeArticulo = (s?: string | null): string => {
   return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
 };
 
-// Devuelve el ícono adecuado según el estado del artículo.
 const iconArticulo = (s?: string | null): React.ReactElement => {
   if (isArticuloAprobadoVisual(s)) return <CheckCircle2 className="size-3" />;
   if (isArticuloRechazado(s)) return <XCircle className="size-3" />;
   return <Clock className="size-3" />;
 };
 
-// Devuelve clases de estilo del chip de la solicitud según estado.
 const badgeSolicitud = (s?: string | null): string => {
   const e = norm(s);
   if (e === "evaluada")
@@ -88,35 +77,54 @@ const badgeSolicitud = (s?: string | null): string => {
   return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
 };
 
-// Mapea la intención de UI a los valores aceptados por la API para la SOLICITUD.
 const mapEstadoSolicitudUIToAPI = (
   ui: "aprobada" | "rechazada"
 ): "evaluada" | "rechazada" => (ui === "aprobada" ? "evaluada" : "rechazada");
 
-/* =========================================================================
-   Page Component (AdminSolicitudDetallePage)
-   -------------------------------------------------------------------------
-   - Página de detalle administrativo de una solicitud.
-   - Se prioriza robustez: control de errores y estados de carga/envío.
-   - No se usan `any`; se tipan utilidades y callbacks.
-   ========================================================================= */
+type EntradaLocal = { valor: string; plazo: string; motivo: string };
+type DecisionLocal =
+  | { tipo: "aprobar"; valor: number; plazo_dias: number }
+  | { tipo: "rechazar"; motivo: string };
+
+function esAprobacion(
+  d: DecisionLocal
+): d is { tipo: "aprobar"; valor: number; plazo_dias: number } {
+  return d.tipo === "aprobar";
+}
+
+// Tope permitido según reglas
+function maxPermitido(
+  a: { valor_estimado: number; id_tipo: number },
+  reglas: Record<number, ReglaTipoArticulo>
+): number | null {
+  const regla = reglas[a.id_tipo];
+  if (!regla || typeof regla.porcentaje_max_prestamo !== "number") return null;
+  const raw = a.valor_estimado * regla.porcentaje_max_prestamo;
+  return Math.round(raw * 100) / 100; // 2 decimales
+}
+
+/* ======================= Componente Principal ======================= */
 export default function AdminSolicitudDetallePage(): React.ReactElement {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = Number(params?.id);
 
-  // Estado local: carga, error, datos y "submitting" para deshabilitar botones.
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<SolicitudDetalleAdmin | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Se define la carga con useCallback para reutilizarla tras acciones (reload).
+  // inputs por artículo y decisiones locales
+  const [inputs, setInputs] = React.useState<Record<number, EntradaLocal>>({});
+  const [decisiones, setDecisiones] = React.useState<Record<number, DecisionLocal>>({});
+
+  // reglas por tipo
+  const [reglas, setReglas] = React.useState<Record<number, ReglaTipoArticulo>>({});
+
   const load = React.useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-
       if (!Number.isFinite(id)) {
         setError("ID inválido");
         setData(null);
@@ -124,6 +132,27 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
       }
       const d = await obtenerSolicitudDetalleAdmin(id);
       setData(d);
+
+      const base: Record<number, EntradaLocal> = {};
+      d.articulos.forEach((a) => {
+        base[a.id_articulo] = {
+          valor: a.valor_aprobado != null ? String(a.valor_aprobado) : "",
+          plazo: "30",
+          motivo: "",
+        };
+      });
+      setInputs(base);
+      setDecisiones({});
+
+      // cargar reglas
+      try {
+        const lista = await obtenerReglasArticulos();
+        const byTipo: Record<number, ReglaTipoArticulo> = {};
+        for (const r of lista) byTipo[r.id_tipo] = r;
+        setReglas(byTipo);
+      } catch {
+        setReglas({});
+      }
     } catch (e: unknown) {
       setError(getErrMsg(e));
       setData(null);
@@ -132,22 +161,162 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
     }
   }, [id]);
 
-  // Al montar o cambiar el id, se dispara la carga.
   React.useEffect(() => {
     void load();
   }, [load]);
 
-  // Cambia el estado de la solicitud completo (aprobada/rechazada).
-  async function onCambiarEstado(uiNuevo: "aprobada" | "rechazada"): Promise<void> {
+  // total aprobado "local"
+  const totalAprobadoLocal = React.useMemo(() => {
+    if (!data) return 0;
+    let sum = 0;
+    for (const a of data.articulos) {
+      const mark = decisiones[a.id_articulo];
+      if (mark && esAprobacion(mark)) {
+        sum += mark.valor;
+      } else {
+        const v = Number(inputs[a.id_articulo]?.valor);
+        if (Number.isFinite(v) && v > 0) sum += v;
+      }
+    }
+    return sum;
+  }, [data, decisiones, inputs]);
+
+  /* ----------- Marca locales por artículo ----------- */
+  function marcarAprobar(id_articulo: number) {
+    const inp = inputs[id_articulo];
+    const valor = Number(inp?.valor);
+    const plazo = Number(inp?.plazo || "30");
+    if (!Number.isFinite(valor) || valor <= 0) {
+      alert("Ingrese un valor aprobado válido (> 0).");
+      return;
+    }
+    if (!Number.isFinite(plazo) || plazo <= 0) {
+      alert("Plazo inválido.");
+      return;
+    }
+    setDecisiones((p) => ({ ...p, [id_articulo]: { tipo: "aprobar", valor, plazo_dias: plazo } }));
+  }
+
+  function marcarRechazar(id_articulo: number) {
+    const motivo = (inputs[id_articulo]?.motivo || "").trim();
+    if (!motivo) {
+      alert("Ingrese el motivo de rechazo.");
+      return;
+    }
+    setDecisiones((p) => ({ ...p, [id_articulo]: { tipo: "rechazar", motivo } }));
+  }
+
+  function quitarMarca(id_articulo: number) {
+    setDecisiones((p) => {
+      const cp = { ...p };
+      delete cp[id_articulo];
+      return cp;
+    });
+  }
+
+  /* ----------- Envío final ----------- */
+  async function aprobarSolicitud(): Promise<void> {
     if (!data) return;
-    const apiNuevo = mapEstadoSolicitudUIToAPI(uiNuevo);
+    if (isEvaluada(data.estado)) {
+      alert("La solicitud ya está cerrada.");
+      return;
+    }
+
+    // Decisiones efectivas a enviar
+    const efectivas: Array<{ id: number; dec: DecisionLocal }> = [];
+    for (const a of data.articulos) {
+      const mark = decisiones[a.id_articulo];
+      if (mark) {
+        efectivas.push({ id: a.id_articulo, dec: mark });
+      } else {
+        const v = Number(inputs[a.id_articulo]?.valor);
+        const p = Number(inputs[a.id_articulo]?.plazo || "30");
+        if (Number.isFinite(v) && v > 0) {
+          efectivas.push({ id: a.id_articulo, dec: { tipo: "aprobar", valor: v, plazo_dias: p } });
+        }
+      }
+    }
+
+    if (efectivas.length === 0) {
+      alert("No hay decisiones/montos para enviar.");
+      return;
+    }
+
+    // Validar contra reglas (tope máximo)
+    for (const e of efectivas) {
+      const art = data.articulos.find((a) => a.id_articulo === e.id);
+      if (!art) continue;
+      const max = maxPermitido(art, reglas);
+      if (max != null && esAprobacion(e.dec) && e.dec.valor > max) {
+        alert(
+          `El artículo #${e.id} excede el máximo permitido.\n` +
+            `Tope: Q ${max.toFixed(2)} · Valor ingresado: Q ${e.dec.valor.toFixed(2)}`
+        );
+        return;
+      }
+    }
+
+    const total = efectivas.reduce((s, e) => (esAprobacion(e.dec) ? s + e.dec.valor : s), 0);
+
     const ok = confirm(
-      `¿Cambiar el estado de la solicitud #${data.id_solicitud} a "${uiNuevo}"? (API: "${apiNuevo}")`
+      `Se enviarán ${efectivas.length} decisiones.\nTotal aprobado: Q ${total.toFixed(
+        2
+      )}.\n¿Confirmar?`
     );
     if (!ok) return;
+
     try {
       setSubmitting(true);
-      await cambiarEstadoSolicitud(data.id_solicitud, apiNuevo);
+
+      // Guardar ids de préstamos aprobados para generar contrato
+      const prestamosAprobados: number[] = [];
+
+      // 1) enviar cada decisión SOLO si el artículo sigue pendiente (evita 409)
+      for (const e of efectivas) {
+        const art = data.articulos.find((a) => a.id_articulo === e.id);
+        if (!art) continue;
+
+        if (!isPendiente(art.estado)) continue;
+
+        if (esAprobacion(e.dec)) {
+          const resp = await aprobarArticulo(e.id, {
+            valor_aprobado: e.dec.valor,
+            plazo_dias: e.dec.plazo_dias,
+          });
+          if (resp?.prestamo?.id_prestamo) {
+            prestamosAprobados.push(resp.prestamo.id_prestamo);
+          }
+        } else {
+          await rechazarArticulo(e.id, { motivo: e.dec.motivo });
+        }
+      }
+
+      // 2) Generar contrato para cada préstamo aprobado (no activar)
+      let contratosOk = 0;
+      for (const id_prestamo of prestamosAprobados) {
+        try {
+          await generarContratoPrestamo(id_prestamo);
+          contratosOk++;
+        } catch (err) {
+          console.warn("No se pudo generar contrato para", id_prestamo, err);
+        }
+      }
+      if (prestamosAprobados.length > 0) {
+        alert(
+          `Contrato(s) generado(s): ${contratosOk}/${prestamosAprobados.length}.\n` +
+            `Los préstamo(s) quedan en "aprobado_pendiente_entrega".\n` +
+            `Se activarán más adelante cuando el contrato esté firmado y se registre la fecha de desembolso.`
+        );
+      }
+
+      // 3) estado de solicitud según si hay aprobados
+      const hayAprobados = efectivas.some((e) => e.dec.tipo === "aprobar");
+      await cambiarEstadoSolicitud(
+        data.id_solicitud,
+        mapEstadoSolicitudUIToAPI(hayAprobados ? "aprobada" : "rechazada")
+      );
+
+      alert("Solicitud actualizada correctamente.");
       await load();
     } catch (e: unknown) {
       alert(getErrMsg(e));
@@ -156,14 +325,19 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
     }
   }
 
-  // Wrapper para evaluar un artículo (aprobar/rechazar) y refrescar.
-  async function onEvaluarArticuloWrapper(
-    id_articulo: number,
-    payload: EvaluarArticuloPayload
-  ): Promise<void> {
+  async function rechazarSolicitud(): Promise<void> {
+    if (!data) return;
+    if (isEvaluada(data.estado)) {
+      alert("La solicitud ya está cerrada.");
+      return;
+    }
+    const motivo = prompt("Motivo del rechazo de la solicitud:");
+    if (!motivo) return;
+
     try {
       setSubmitting(true);
-      await evaluarArticulo(id_articulo, payload);
+      await cambiarEstadoSolicitud(data.id_solicitud, "rechazada");
+      alert("Solicitud rechazada.");
       await load();
     } catch (e: unknown) {
       alert(getErrMsg(e));
@@ -172,55 +346,42 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
     }
   }
 
-  /* -------------------------------------
-     Estados de interfaz: Cargando / Error
-     ------------------------------------- */
-  if (loading) {
-    // Mientras carga, se muestra un spinner central para feedback claro.
+  /* ----------- UI ----------- */
+  if (loading)
     return (
       <div className="grid place-items-center py-16 text-neutral-400">
-        <Loader2 className="mr-2 size-6 animate-spin" />
-        Cargando…
+        <Loader2 className="mr-2 size-6 animate-spin" /> Cargando…
       </div>
     );
-  }
 
-  if (error || !data) {
-    // En error o sin datos, se ofrece navegación para volver al listado.
+  if (error || !data)
     return (
       <div className="space-y-4">
         <button
           onClick={() => router.push("/dashboard/solicitudes")}
           className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
         >
-          <ArrowLeft className="size-4" />
-          Volver
+          <ArrowLeft className="size-4" /> Volver
         </button>
-
         <div className="flex items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 p-8 text-red-400">
           <AlertCircle className="mr-2 size-5" />
           {error ?? "No se pudo cargar la solicitud."}
         </div>
       </div>
     );
-  }
 
-  // Si hay datos, se desestructura para uso más legible.
   const { cliente, articulos, resumen } = data;
 
   return (
     <div className="space-y-6">
-      {/* ===========================================================
-          Encabezado con acciones de solicitud (aprobar / rechazar)
-          =========================================================== */}
+      {/* Encabezado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button
             onClick={() => router.push("/dashboard/solicitudes")}
             className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
           >
-            <ArrowLeft className="size-4" />
-            Volver
+            <ArrowLeft className="size-4" /> Volver
           </button>
           <h1 className="text-xl font-semibold">Solicitud #{data.id_solicitud}</h1>
           <span
@@ -232,29 +393,38 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            disabled={submitting}
-            onClick={() => onCambiarEstado("aprobada")}
-            className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
-          >
-            <CheckCircle2 className="size-4" />
-            Aprobar
-          </button>
-          <button
-            disabled={submitting}
-            onClick={() => onCambiarEstado("rechazada")}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 hover:bg-red-500/20 disabled:opacity-50"
-          >
-            <XCircle className="size-4" />
-            Rechazar
-          </button>
-        </div>
+        {/* Acciones top */}
+        {!isEvaluada(data.estado) && (
+          <div className="flex flex-col items-end gap-2">
+            <div className="text-sm">
+              <span className="text-neutral-400">Total aprobado (local): </span>
+              <span className="font-semibold text-emerald-300">
+                Q {totalAprobadoLocal.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                disabled={submitting}
+                onClick={aprobarSolicitud}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                <CheckCircle2 className="size-4" />
+                Aprobar solicitud
+              </button>
+              <button
+                disabled={submitting}
+                onClick={rechazarSolicitud}
+                className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+              >
+                <XCircle className="size-4" />
+                Rechazar solicitud
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ===========================================================
-          Datos del cliente + Resumen de artículos
-          =========================================================== */}
+      {/* Datos cliente + resumen */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5 md:col-span-2">
           <h2 className="mb-3 text-sm font-semibold text-neutral-300">Datos del cliente</h2>
@@ -304,9 +474,7 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
         </div>
       </div>
 
-      {/* ===========================================================
-          Listado de artículos con acciones (aprobar / rechazar)
-          =========================================================== */}
+      {/* Artículos (con controles) */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="mb-4 flex items-center gap-2">
           <Package className="size-4 text-blue-300" />
@@ -318,7 +486,12 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
 
         <div className="space-y-3">
           {articulos.map((a) => {
-            const puedeAprobar = isPendiente(a.estado);
+            const pendiente = isPendiente(a.estado);
+            const mark = decisiones[a.id_articulo];
+            const max = maxPermitido(a, reglas);
+            const valorNum = Number(inputs[a.id_articulo]?.valor);
+            const excede = Number.isFinite(valorNum) && max != null && valorNum > max;
+
             return (
               <div
                 key={a.id_articulo}
@@ -334,75 +507,32 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
                         {a.tipo_nombre ?? "Artículo"}
                       </span>
                       {a.condicion && (
-                        <span className="text-xs capitalize text-neutral-400">
-                          · {a.condicion}
-                        </span>
+                        <span className="text-xs capitalize text-neutral-400">· {a.condicion}</span>
                       )}
                     </div>
-
                     <p className="mt-1 text-sm text-neutral-300">{a.descripcion}</p>
-
                     <div className="mt-2 text-xs text-neutral-400">
-                      Valor estimado:{" "}
-                      <span className="font-mono">Q {a.valor_estimado}</span>
+                      Valor estimado: <span className="font-mono">Q {a.valor_estimado}</span>
                       {a.valor_aprobado != null && (
                         <>
                           {" "}
                           · Valor aprobado:{" "}
-                          <span className="font-mono text-emerald-300">
-                            Q {a.valor_aprobado}
-                          </span>
+                          <span className="font-mono text-emerald-300">Q {a.valor_aprobado}</span>
                         </>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${badgeArticulo(
-                        a.estado
-                      )}`}
-                    >
-                      {iconArticulo(a.estado)}
-                      {/* Se muestra el texto tal cual llega del backend */}
-                      {a.estado ?? "pendiente"}
-                    </span>
-
-                    {puedeAprobar && (
-                      <>
-                        <button
-                          disabled={submitting}
-                          onClick={() =>
-                            onEvaluarArticuloWrapper(a.id_articulo, {
-                              accion: "aprobar",
-                              // Se sugiere valor estimado como base; en el futuro podría abrirse un modal.
-                              valor_aprobado: a.valor_estimado ?? 0,
-                              plazo_dias: 30,
-                            })
-                          }
-                          className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
-                        >
-                          Aprobar
-                        </button>
-
-                        <button
-                          disabled={submitting}
-                          onClick={() =>
-                            onEvaluarArticuloWrapper(a.id_articulo, {
-                              accion: "rechazar",
-                              motivo_rechazo: "No cumple requisitos",
-                            })
-                          }
-                          className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/20 disabled:opacity-50"
-                        >
-                          Rechazar
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${badgeArticulo(
+                      a.estado
+                    )}`}
+                  >
+                    {iconArticulo(a.estado)}
+                    {a.estado ?? "pendiente"}
+                  </span>
                 </div>
 
-                {/* Bloque de fotos (colapsable) */}
                 {a.fotos?.length ? (
                   <details className="mt-3">
                     <summary className="cursor-pointer text-xs text-neutral-400">
@@ -427,6 +557,120 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
                     </div>
                   </details>
                 ) : null}
+
+                {/* Controles locales */}
+                <div className="mt-4 grid gap-1 sm:grid-cols-3">
+                  <label className="grid gap-1 text-xs">
+                    <span className="text-neutral-300">Valor aprobado (Q)</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={inputs[a.id_articulo]?.valor ?? ""}
+                      onChange={(e) =>
+                        setInputs((p) => ({
+                          ...p,
+                          [a.id_articulo]: {
+                            ...(p[a.id_articulo] || { plazo: "30", motivo: "" }),
+                            valor: e.target.value,
+                          },
+                        }))
+                      }
+                      disabled={!pendiente || submitting}
+                      className={`rounded-lg bg-neutral-900 px-3 py-2 text-sm border outline-none disabled:opacity-50
+                        ${excede ? "border-red-500 focus:border-red-500" : "border-white/10 focus:border-emerald-500"}`}
+                    />
+                    {max != null && (
+                      <span className={`mt-0.5 ${excede ? "text-red-300" : "text-neutral-400"}`}>
+                        Máximo permitido:{" "}
+                        <span className="font-mono">Q {max.toFixed(2)}</span>
+                        {excede ? " · excede el tope" : ""}
+                      </span>
+                    )}
+                  </label>
+
+                  <label className="grid gap-1 text-xs">
+                    <span className="text-neutral-300">Plazo (días)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={inputs[a.id_articulo]?.plazo ?? "30"}
+                      onChange={(e) =>
+                        setInputs((p) => ({
+                          ...p,
+                          [a.id_articulo]: {
+                            ...(p[a.id_articulo] || { valor: "", motivo: "" }),
+                            plazo: e.target.value,
+                          },
+                        }))
+                      }
+                      disabled={!pendiente || submitting}
+                      className="rounded-lg bg-neutral-900 px-3 py-2 text-sm border border-white/10 outline-none focus:border-blue-500 disabled:opacity-50"
+                    />
+                  </label>
+
+                  <label className="grid gap-1 text-xs">
+                    <span className="text-neutral-300">Motivo de rechazo</span>
+                    <input
+                      type="text"
+                      value={inputs[a.id_articulo]?.motivo ?? ""}
+                      onChange={(e) =>
+                        setInputs((p) => ({
+                          ...p,
+                          [a.id_articulo]: {
+                            ...(p[a.id_articulo] || { valor: "", plazo: "30" }),
+                            motivo: e.target.value,
+                          },
+                        }))
+                      }
+                      disabled={!pendiente || submitting}
+                      placeholder="Completar si vas a rechazar"
+                      className="rounded-lg bg-neutral-900 px-3 py-2 text-sm border border-white/10 outline-none focus:border-red-500 disabled:opacity-50"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => marcarAprobar(a.id_articulo)}
+                    disabled={!pendiente || submitting || (max != null && excede)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="size-4" />
+                    Marcar aprobar
+                  </button>
+
+                  <button
+                    onClick={() => marcarRechazar(a.id_articulo)}
+                    disabled={!pendiente || submitting}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    <XCircle className="size-4" />
+                    Marcar rechazo
+                  </button>
+
+                  {mark && (
+                    <button
+                      onClick={() => quitarMarca(a.id_articulo)}
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/5"
+                    >
+                      Quitar marca
+                    </button>
+                  )}
+
+                  {mark && esAprobacion(mark) && (
+                    <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
+                      Marcado: aprobar Q {mark.valor} · {mark.plazo_dias} días
+                    </span>
+                  )}
+                  {mark && !esAprobacion(mark) && (
+                    <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-300">
+                      Marcado: rechazar — {mark.motivo}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -436,15 +680,8 @@ export default function AdminSolicitudDetallePage(): React.ReactElement {
   );
 }
 
-/* =========================================================================
-   Utilidades de error tipadas (sin `any`)
-   -------------------------------------------------------------------------
-   - Se define un type guard para objetos con `message` string.
-   - Evita usar "as any" y satisface `@typescript-eslint/no-explicit-any`.
-   ========================================================================= */
 function isRecordWithMessage(value: unknown): value is { message: string } {
   if (typeof value !== "object" || value === null) return false;
-  // Se usa acceso seguro vía Record<string, unknown> para no caer en `any`.
   const rec = value as Record<string, unknown>;
   return typeof rec.message === "string";
 }

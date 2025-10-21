@@ -1,271 +1,222 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { uploadToCloudinary } from "@/app/services/cloudinary";
-import {
-  crearSolicitudCompleta,
-  type NuevaSolicitudPayload,
-} from "@/app/services/solicitudes";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Trash2, Upload, AlertCircle, Loader2 } from "lucide-react";
-import { usePermiso } from "@/hooks/usePermiso";
+import api from "@/lib/api";
+import { uploadToCloudinary } from "@/app/services/cloudinary";
 
-/* =========================================================================
-   Tipos de formulario y utilitarios de tipado
-   -------------------------------------------------------------------------
-   - Se modelan los campos del formulario con precisión para evitar `any`.
-   - Se provee un helper genérico para actualizar campos de artículos.
-   ========================================================================= */
 type Metodo = "domicilio" | "oficina";
 type Condicion = "nuevo" | "seminuevo" | "usado" | "malo";
+
+type TipoArticulo = { id_tipo: number; nombre: string };
 
 type ArtForm = {
   id_tipo: number | "";
   descripcion: string;
-  valor_estimado: string; // Se mantiene como string para control del input
+  valor_estimado: string;
   condicion: Condicion | "";
   files: File[];
-  previews: string[]; // URLs temporales (Object URLs)
+  previews: string[];
 };
 
-type ArtFormField = keyof ArtForm;
-type ArtFormValue<F extends ArtFormField> =
-  F extends "id_tipo" ? number | "" :
-  F extends "descripcion" ? string :
-  F extends "valor_estimado" ? string :
-  F extends "condicion" ? Condicion | "" :
-  F extends "files" ? File[] :
-  F extends "previews" ? string[] :
-  never;
-
-/* =========================================================================
-   Componente de página: NuevaSolicitudPage
-   -------------------------------------------------------------------------
-   - Se asegura que los hooks se llamen siempre en el mismo orden (sin cond.)
-   - Se corrigen warnings de variables no utilizadas (i/j).
-   - Se limpia correctamente memoria de Object URLs.
-   ========================================================================= */
 export default function NuevaSolicitudPage(): React.ReactElement {
   const router = useRouter();
-  const puedeCrear = usePermiso("solicitudes.create");
 
-  // Estado del formulario
-  const [metodo, setMetodo] = React.useState<Metodo>("domicilio");
-  const [direccion, setDireccion] = React.useState<string>("");
-
+  const [tipos, setTipos] = React.useState<TipoArticulo[]>([]);
+  const [metodo, setMetodo] = React.useState<Metodo>("oficina");
+  const [direccion, setDireccion] = React.useState("");
   const [articulos, setArticulos] = React.useState<ArtForm[]>([
-    { id_tipo: 1, descripcion: "", valor_estimado: "", condicion: "", files: [], previews: [] },
+    { id_tipo: "", descripcion: "", valor_estimado: "", condicion: "", files: [], previews: [] },
   ]);
-
   const [submitting, setSubmitting] = React.useState(false);
+  const [loadingTipos, setLoadingTipos] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Referencia para limpiar todas las Object URLs en unmount
   const objectUrlsRef = React.useRef<string[]>([]);
 
-  // Redirección si el usuario no tiene permiso para crear
   React.useEffect(() => {
-    if (!puedeCrear) router.push("/dashboard/solicitudes");
-  }, [puedeCrear, router]);
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingTipos(true);
+        const { data } = await api.get("/catalogos/tipos_articulo");
+        if (!mounted) return;
+        const items: TipoArticulo[] = (Array.isArray(data) ? data : []).map((t: any) => ({
+          id_tipo: Number(t.id_tipo ?? t.IdTipo ?? t.id ?? 0),
+          nombre: String(t.nombre ?? t.Nombre ?? "Tipo"),
+        }));
+        setTipos(items);
+        setArticulos((prev) =>
+          prev.map((a) => ({ ...a, id_tipo: a.id_tipo === "" && items[0] ? items[0].id_tipo : a.id_tipo }))
+        );
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudieron cargar los tipos de artículo.");
+      } finally {
+        setLoadingTipos(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  // Agrega un artículo vacío
-  const addArticulo = (): void =>
-    setArticulos((prev) => [
-      ...prev,
-      { id_tipo: 1, descripcion: "", valor_estimado: "", condicion: "", files: [], previews: [] },
+  const addArticulo = () =>
+    setArticulos((p) => [
+      ...p,
+      {
+        id_tipo: tipos[0]?.id_tipo ?? "",
+        descripcion: "",
+        valor_estimado: "",
+        condicion: "",
+        files: [],
+        previews: [],
+      },
     ]);
 
-  // Elimina un artículo por índice
-  const removeArticulo = (idx: number): void =>
-    setArticulos((prev) => prev.filter((_, i) => i !== idx));
+  const removeArticulo = (idx: number) =>
+    setArticulos((p) => {
+      const copy = [...p];
+      for (const url of copy[idx].previews) URL.revokeObjectURL(url);
+      objectUrlsRef.current = objectUrlsRef.current.filter((u) => !copy[idx].previews.includes(u));
+      copy.splice(idx, 1);
+      return copy.length ? copy : p;
+    });
 
-  // Manejo de archivos (solo imágenes, 5MB máx.)
-  const onFiles = (idx: number, fileList: FileList | null): void => {
+  const onFiles = (idx: number, fileList: FileList | null) => {
     if (!fileList) return;
     const files = Array.from(fileList);
-
-    // Valida tipo
     const nonImages = files.filter((f) => !f.type.startsWith("image/"));
-    if (nonImages.length > 0) {
+    if (nonImages.length) {
       setError("Solo se permiten imágenes (JPG, PNG, WebP).");
       return;
     }
-
-    // Valida tamaño (5MB por imagen)
-    const MAX_SIZE = 5 * 1024 * 1024;
-    const invalidFiles = files.filter((f) => f.size > MAX_SIZE);
-    if (invalidFiles.length > 0) {
-      setError("Algunas imágenes superan el tamaño máximo de 5MB.");
+    const MAX = 5 * 1024 * 1024;
+    const big = files.filter((f) => f.size > MAX);
+    if (big.length) {
+      setError("Algunas imágenes superan 5MB.");
       return;
     }
-
-    // Genera previews y registra para limpiar en unmount
     const previews = files.map((f) => {
       const url = URL.createObjectURL(f);
       objectUrlsRef.current.push(url);
       return url;
     });
+    setArticulos((p) => {
+      const c = [...p];
+      c[idx] = { ...c[idx], files: [...c[idx].files, ...files], previews: [...c[idx].previews, ...previews] };
+      return c;
+    });
+  };
 
-    setArticulos((prev) => {
-      const copy = [...prev];
-      copy[idx] = {
-        ...copy[idx],
-        files: [...copy[idx].files, ...files],
-        previews: [...copy[idx].previews, ...previews],
+  const removeFoto = (aIdx: number, fIdx: number) =>
+    setArticulos((p) => {
+      const c = [...p];
+      const url = c[aIdx].previews[fIdx];
+      if (url) {
+        URL.revokeObjectURL(url);
+        objectUrlsRef.current = objectUrlsRef.current.filter((u) => u !== url);
+      }
+      c[aIdx] = {
+        ...c[aIdx],
+        files: c[aIdx].files.filter((_, i) => i !== fIdx),
+        previews: c[aIdx].previews.filter((_, i) => i !== fIdx),
       };
-      return copy;
+      return c;
     });
+
+  const setField = <K extends keyof ArtForm>(idx: number, key: K, val: ArtForm[K]) =>
+    setArticulos((p) => {
+      const c = [...p];
+      c[idx] = { ...c[idx], [key]: val };
+      return c;
+    });
+
+  const totalFotos = React.useMemo(
+    () => articulos.reduce((acc, a) => acc + a.files.length, 0),
+    [articulos]
+  );
+
+  const totalEstimado = React.useMemo(
+    () =>
+      articulos.reduce((acc, a) => acc + (Number.isFinite(Number(a.valor_estimado)) ? Number(a.valor_estimado) : 0), 0),
+    [articulos]
+  );
+
+  const validate = () => {
+    if (metodo === "domicilio" && !direccion.trim()) return "La dirección es obligatoria para domicilio.";
+    if (!articulos.length) return "Agrega al menos un artículo.";
+    for (let i = 0; i < articulos.length; i++) {
+      const a = articulos[i];
+      if (a.id_tipo === "" || !Number.isFinite(Number(a.id_tipo))) return `Artículo #${i + 1}: selecciona el tipo.`;
+      if (!a.descripcion.trim()) return `Artículo #${i + 1}: la descripción es requerida.`;
+      const ve = Number(a.valor_estimado);
+      if (!Number.isFinite(ve) || ve <= 0) return `Artículo #${i + 1}: el valor estimado debe ser mayor a 0.`;
+      if (!a.condicion) return `Artículo #${i + 1}: selecciona la condición.`;
+      if (a.files.length === 0) return `Artículo #${i + 1}: agrega al menos una foto.`;
+    }
+    return null;
   };
 
-  // Elimina una foto de un artículo específico
-  const removeFoto = (aIdx: number, fIdx: number): void => {
-    setArticulos((prev) => {
-      const copy = [...prev];
-      const art = copy[aIdx];
-
-      // Libera URL del preview
-      const toRevoke = art.previews[fIdx];
-      URL.revokeObjectURL(toRevoke);
-      objectUrlsRef.current = objectUrlsRef.current.filter((u) => u !== toRevoke);
-
-      const newFiles = art.files.filter((_, i) => i !== fIdx);
-      const newPrev = art.previews.filter((_, i) => i !== fIdx);
-      copy[aIdx] = { ...art, files: newFiles, previews: newPrev };
-      return copy;
-    });
-  };
-
-  // Actualiza un campo del artículo de forma segura (sin `any`)
-  function updateArticulo<F extends ArtFormField>(
-    idx: number,
-    field: F,
-    value: ArtFormValue<F>
-  ): void {
-    setArticulos((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], [field]: value } as ArtForm;
-      return copy;
-    });
-  }
-
-  // Envío del formulario
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-
-    // Validaciones de alto nivel
-    if (metodo === "domicilio" && !direccion.trim()) {
-      setError("La dirección es obligatoria para método domicilio.");
+    const v = validate();
+    if (v) {
+      setError(v);
       return;
     }
-    if (articulos.length === 0) {
-      setError("Agrega al menos un artículo.");
-      return;
-    }
-
-    // Validaciones por artículo
-    for (const [i, a] of articulos.entries()) {
-      if (!a.descripcion.trim()) {
-        setError(`Artículo #${i + 1}: La descripción es requerida.`);
-        return;
-      }
-      const ve = Number(a.valor_estimado);
-      if (!Number.isFinite(ve) || ve <= 0) {
-        setError(`Artículo #${i + 1}: El valor estimado debe ser mayor a 0.`);
-        return;
-      }
-      if (!a.condicion) {
-        setError(`Artículo #${i + 1}: Selecciona una condición.`);
-        return;
-      }
-      if (a.files.length === 0) {
-        setError(`Artículo #${i + 1}: Debe incluir al menos una foto.`);
-        return;
-      }
-    }
-
     setSubmitting(true);
     try {
-      // 1) Subir fotos a Cloudinary
       const FOLDER = "pignoraticios/solicitudes";
-      const articulosConUrls: NuevaSolicitudPayload["articulos"] = [];
+      const articulosConUrls: Array<{
+        id_tipo: number;
+        descripcion: string;
+        valor_estimado: number;
+        condicion: string;
+        fotos: Array<{ url: string; orden: number }>;
+      }> = [];
 
       for (const a of articulos) {
         const urls: string[] = [];
-        // ⚠️ Se elimina la variable `j` no usada para evitar warning
-        for (const file of a.files) {
-          const url = await uploadToCloudinary(file, FOLDER);
+        for (const f of a.files) {
+          const url = await uploadToCloudinary(f, FOLDER);
           urls.push(url);
         }
         articulosConUrls.push({
-          id_tipo: Number(a.id_tipo || 1),
+          id_tipo: Number(a.id_tipo),
           descripcion: a.descripcion.trim(),
           valor_estimado: Number(a.valor_estimado),
-          condicion: a.condicion as Condicion,
-          fotos: urls.map((u, idx) => ({ url: u, orden: idx + 1 })),
+          condicion: a.condicion as string,
+          fotos: urls.map((u, i) => ({ url: u, orden: i + 1 })),
         });
       }
 
-      // 2) Arma el payload final
-      const payload: NuevaSolicitudPayload = {
+      const payload = {
         metodo_entrega: metodo,
         ...(metodo === "domicilio" ? { direccion_entrega: direccion.trim() } : {}),
         articulos: articulosConUrls,
       };
 
-      // 3) Llama al backend
-      const creada = await crearSolicitudCompleta(payload);
-
-      // 4) Redirige al detalle
-      router.push(`/dashboard/solicitudes/${creada.id_solicitud}`);
+      const { data } = await api.post("/solicitudes-completa", payload);
+      router.push(`/dashboard/solicitudes/${data?.id_solicitud ?? ""}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la solicitud.");
       setSubmitting(false);
     }
-  }
+  };
 
-  // Limpieza de todas las Object URLs al desmontar
   React.useEffect(() => {
     return () => {
-      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+      for (const u of objectUrlsRef.current) URL.revokeObjectURL(u);
       objectUrlsRef.current = [];
     };
   }, []);
 
-  // Vista para usuarios sin permiso (no se condicionan hooks, solo el render)
-  if (!puedeCrear) {
-    return (
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="size-5 text-red-400" />
-            <div>
-              <div className="font-medium text-red-400">Acceso denegado</div>
-              <div className="mt-1 text-sm text-red-300">
-                No tiene permiso para crear solicitudes. Favor contactar al administrador.
-              </div>
-            </div>
-          </div>
-          <div className="mt-4">
-            <Link
-              href="/dashboard/solicitudes"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
-            >
-              <ArrowLeft className="size-4" />
-              Volver a solicitudes
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Render principal del formulario
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/dashboard/solicitudes"
@@ -277,7 +228,6 @@ export default function NuevaSolicitudPage(): React.ReactElement {
         <h1 className="text-xl font-semibold">Nueva solicitud</h1>
       </div>
 
-      {/* Mensaje de error global */}
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
           <div className="flex items-center gap-2">
@@ -287,16 +237,14 @@ export default function NuevaSolicitudPage(): React.ReactElement {
         </div>
       )}
 
-      {/* Formulario */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Datos de entrega */}
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
+        <section className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
           <h2 className="font-medium">Datos de entrega</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm">
               <span className="text-neutral-300">Método de entrega</span>
               <select
-                className="rounded-xl bg-neutral-900 px-3 py-2 border border-white/10 outline-none focus:border-blue-500"
+                className="rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
                 value={metodo}
                 onChange={(e) => setMetodo(e.target.value as Metodo)}
                 disabled={submitting}
@@ -312,7 +260,7 @@ export default function NuevaSolicitudPage(): React.ReactElement {
                   Dirección completa <span className="text-red-400">*</span>
                 </span>
                 <input
-                  className="rounded-xl bg-neutral-900 px-3 py-2 border border-white/10 outline-none focus:border-blue-500"
+                  className="rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
                   placeholder="Calle, número, zona, ciudad…"
                   value={direccion}
                   onChange={(e) => setDireccion(e.target.value)}
@@ -324,14 +272,13 @@ export default function NuevaSolicitudPage(): React.ReactElement {
           </div>
         </section>
 
-        {/* Artículos */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Artículos ({articulos.length})</h2>
             <button
               type="button"
               onClick={addArticulo}
-              disabled={submitting}
+              disabled={submitting || loadingTipos}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm hover:bg-blue-500 disabled:opacity-50"
             >
               <Plus className="size-4" />
@@ -360,19 +307,24 @@ export default function NuevaSolicitudPage(): React.ReactElement {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1 text-sm">
                     <span className="text-neutral-300">
-                      Tipo (ID catálogo) <span className="text-red-400">*</span>
+                      Tipo (catálogo) <span className="text-red-400">*</span>
                     </span>
-                    <input
-                      type="number"
-                      min={1}
-                      className="rounded-xl bg-neutral-900 px-3 py-2 border border-white/10 outline-none focus:border-blue-500"
+                    <select
+                      className="rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
                       value={a.id_tipo === "" ? "" : Number(a.id_tipo)}
-                      onChange={(e) =>
-                        updateArticulo(idx, "id_tipo", e.target.value === "" ? "" : Number(e.target.value))
-                      }
-                      disabled={submitting}
+                      onChange={(e) => setField(idx, "id_tipo", e.target.value === "" ? "" : Number(e.target.value))}
+                      disabled={submitting || loadingTipos}
                       required
-                    />
+                    >
+                      <option value="" disabled>
+                        {loadingTipos ? "Cargando..." : "Selecciona…"}
+                      </option>
+                      {tipos.map((t) => (
+                        <option key={t.id_tipo} value={t.id_tipo}>
+                          {t.nombre}
+                        </option>
+                      ))}
+                    </select>
                   </label>
 
                   <label className="grid gap-1 text-sm">
@@ -383,10 +335,10 @@ export default function NuevaSolicitudPage(): React.ReactElement {
                       type="number"
                       min="0.01"
                       step="0.01"
-                      className="rounded-xl bg-neutral-900 px-3 py-2 border border-white/10 outline-none focus:border-blue-500"
+                      className="rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
                       placeholder="1800.00"
                       value={a.valor_estimado}
-                      onChange={(e) => updateArticulo(idx, "valor_estimado", e.target.value)}
+                      onChange={(e) => setField(idx, "valor_estimado", e.target.value)}
                       disabled={submitting}
                       required
                     />
@@ -398,10 +350,10 @@ export default function NuevaSolicitudPage(): React.ReactElement {
                     </span>
                     <textarea
                       className="resize-none rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
-                      placeholder="Ej: iPhone 12 de 128GB, color negro, con caja original y cargador"
+                      placeholder="Ej: iPhone 12 128GB, negro, con caja y cargador"
                       rows={3}
                       value={a.descripcion}
-                      onChange={(e) => updateArticulo(idx, "descripcion", e.target.value)}
+                      onChange={(e) => setField(idx, "descripcion", e.target.value)}
                       disabled={submitting}
                       required
                     />
@@ -414,15 +366,15 @@ export default function NuevaSolicitudPage(): React.ReactElement {
                     <select
                       className="rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
                       value={a.condicion}
-                      onChange={(e) => updateArticulo(idx, "condicion", e.target.value as Condicion | "")}
+                      onChange={(e) => setField(idx, "condicion", e.target.value as Condicion | "")}
                       disabled={submitting}
                       required
                     >
                       <option value="">Selecciona…</option>
-                      <option value="nuevo">Nuevo (sin uso)</option>
-                      <option value="seminuevo">Seminuevo (poco uso)</option>
-                      <option value="usado">Usado (funcional)</option>
-                      <option value="malo">Malo (requiere reparación)</option>
+                      <option value="nuevo">Nuevo</option>
+                      <option value="seminuevo">Seminuevo</option>
+                      <option value="usado">Usado</option>
+                      <option value="malo">Malo</option>
                     </select>
                   </label>
 
@@ -454,17 +406,12 @@ export default function NuevaSolicitudPage(): React.ReactElement {
                         {a.files.length === 0 && <span className="ml-1 text-red-400">(mínimo 1)</span>}
                       </span>
                     </div>
-                    <div className="text-xs text-neutral-500">
-                      Formatos: JPG, PNG, WebP. Máx 5MB por imagen.
-                    </div>
+                    <div className="text-xs text-neutral-500">JPG/PNG/WebP · ≤ 5MB</div>
                   </label>
 
-                  {/* Previews (full width) */}
                   {a.previews.length > 0 && (
                     <div className="sm:col-span-2">
-                      <div className="mb-2 text-xs text-neutral-400">
-                        Vista previa ({a.previews.length})
-                      </div>
+                      <div className="mb-2 text-xs text-neutral-400">Vista previa ({a.previews.length})</div>
                       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
                         {a.previews.map((src, i) => (
                           <div key={src} className="group relative">
@@ -501,40 +448,21 @@ export default function NuevaSolicitudPage(): React.ReactElement {
           </ul>
         </section>
 
-        {/* Resumen antes de enviar */}
         <section className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">
           <div className="text-sm">
             <div className="mb-2 font-medium text-blue-400">Resumen de la solicitud</div>
             <ul className="space-y-1 text-neutral-300">
-              <li>
-                • Método: <span className="font-medium capitalize">{metodo}</span>
-              </li>
+              <li>• Método: <span className="font-medium capitalize">{metodo}</span></li>
               {metodo === "domicilio" && direccion && (
-                <li>
-                  • Dirección: <span className="font-medium">{direccion}</span>
-                </li>
+                <li>• Dirección: <span className="font-medium">{direccion}</span></li>
               )}
               <li>• Artículos: <span className="font-medium">{articulos.length}</span></li>
-              <li>
-                • Fotos totales:{" "}
-                <span className="font-medium">
-                  {articulos.reduce((sum, a) => sum + a.files.length, 0)}
-                </span>
-              </li>
-              <li>
-                • Valor estimado total:{" "}
-                <span className="font-medium text-emerald-400">
-                  Q
-                  {articulos
-                    .reduce((sum, a) => sum + (Number(a.valor_estimado) || 0), 0)
-                    .toFixed(2)}
-                </span>
-              </li>
+              <li>• Fotos totales: <span className="font-medium">{totalFotos}</span></li>
+              <li>• Valor estimado total: <span className="font-medium text-emerald-400">Q {totalEstimado.toFixed(2)}</span></li>
             </ul>
           </div>
         </section>
 
-        {/* Botones de acción */}
         <div className="flex flex-col gap-3 sm:flex-row">
           <button
             type="submit"
@@ -561,22 +489,6 @@ export default function NuevaSolicitudPage(): React.ReactElement {
           >
             Cancelar
           </Link>
-        </div>
-
-        {/* Información adicional */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-neutral-400">
-          <div className="mb-2 font-medium text-neutral-300">ℹ️ Información importante</div>
-          <ul className="list-inside list-disc space-y-1">
-            <li>Las fotos se subirán a la nube de forma segura.</li>
-            <li>El proceso de carga puede tardar algunos segundos.</li>
-            <li>Una vez creada, la solicitud será revisada por un valuador.</li>
-            <li>Se enviarán notificaciones sobre el estado de la solicitud.</li>
-            {metodo === "domicilio" && (
-              <li className="text-yellow-400">
-                Para domicilio: verificar que la dirección sea correcta; se realizará contacto.
-              </li>
-            )}
-          </ul>
         </div>
       </form>
     </div>

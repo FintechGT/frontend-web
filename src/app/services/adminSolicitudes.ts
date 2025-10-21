@@ -1,5 +1,9 @@
+// src/app/services/adminSolicitudes.ts
 import api from "@/lib/api";
 
+/* =========================================================
+   Tipos de Solicitudes (Admin)
+   ========================================================= */
 export type SolicitudAdmin = {
   id_solicitud: number;
   id_usuario: number;
@@ -69,6 +73,9 @@ function cleanParams(p: ListarSolicitudesAdminParams = {}) {
   return out;
 }
 
+/* =========================================================
+   Listado y Detalle
+   ========================================================= */
 export async function listarSolicitudesAdmin(
   params: ListarSolicitudesAdminParams = {}
 ): Promise<{ items: SolicitudAdmin[]; total: number; limit: number; offset: number }> {
@@ -76,24 +83,143 @@ export async function listarSolicitudesAdmin(
   return data;
 }
 
-export async function obtenerSolicitudDetalleAdmin(id_solicitud: number): Promise<SolicitudDetalleAdmin> {
+export async function obtenerSolicitudDetalleAdmin(
+  id_solicitud: number
+): Promise<SolicitudDetalleAdmin> {
   const { data } = await api.get(`/admin/solicitudes/${id_solicitud}`);
   return data;
 }
 
+/* =========================================================
+   Evaluación de Artículos
+   ---------------------------------------------------------
+   A) Admin genérico:  POST /admin/solicitudes/articulos/{id}/evaluar
+   B) Aprobar directo: POST /articulos/{id}/aprobar
+   C) Rechazar directo:PATCH /articulo/rechazar/{id}/rechazar
+   ========================================================= */
+
+// A) Admin genérico (si aún lo usas en algún flujo)
 export type EvaluarArticuloPayload = {
   accion: "aprobar" | "rechazar";
   valor_aprobado?: number;
   plazo_dias?: number;
-  motivo_rechazo?: string;
+  motivo?: string; // usar 'motivo' (no 'motivo_rechazo')
 };
 
 export async function evaluarArticulo(id_articulo: number, payload: EvaluarArticuloPayload) {
-  const { data } = await api.post(`/admin/solicitudes/articulos/${id_articulo}/evaluar`, payload);
+  const { data } = await api.post(
+    `/admin/solicitudes/articulos/${id_articulo}/evaluar`,
+    payload
+  );
   return data;
 }
 
-export async function cambiarEstadoSolicitud(id_solicitud: number, nuevo_estado: string, motivo?: string) {
+// B) Aprobar directo (crea préstamo y deja artículo en 'evaluado')
+export type AprobarArticuloPayload = {
+  valor_aprobado: number;
+  plazo_dias: number;
+};
+
+export type AprobarArticuloResponse = {
+  estado_articulo: "evaluado";
+  id_articulo: number;
+  valor_aprobado: number;
+  prestamo: {
+    id_prestamo: number;
+    estado: string; // "aprobado_pendiente_entrega"
+    monto_prestamo: number;
+    fecha_inicio: string;
+    fecha_vencimiento: string;
+  };
+};
+
+export async function aprobarArticulo(
+  id_articulo: number,
+  payload: AprobarArticuloPayload
+) {
+  const { data } = await api.post(`/articulos/${id_articulo}/aprobar`, payload);
+  return data as AprobarArticuloResponse;
+}
+
+// C) Rechazar directo
+export type RechazarArticuloPayload = { motivo: string };
+export type RechazarArticuloResponse = {
+  id_articulo: number;
+  estado: "rechazado";
+  motivo: string;
+};
+
+export async function rechazarArticulo(
+  id_articulo: number,
+  payload: RechazarArticuloPayload
+) {
+  const { data } = await api.patch(
+    `/articulo/rechazar/${id_articulo}/rechazar`,
+    payload
+  );
+  return data as RechazarArticuloResponse;
+}
+
+/* =========================================================
+   Reglas por Tipo de Artículo (para validaciones en UI)
+   ========================================================= */
+export type ReglaTipoArticulo = {
+  id_tipo: number;
+  porcentaje_max_prestamo: number; // ej. 0.8  (80% del valor_estimado)
+  // agrega aquí otros campos que tenga tu API si los necesitas
+};
+
+export async function obtenerReglasArticulos(): Promise<ReglaTipoArticulo[]> {
+  const { data } = await api.get("/reglas/articulos");
+  return data as ReglaTipoArticulo[];
+}
+
+export async function obtenerReglaTipoArticulo(id_tipo: number): Promise<ReglaTipoArticulo> {
+  const { data } = await api.get(`/reglas/articulos/${id_tipo}`);
+  return data as ReglaTipoArticulo;
+}
+
+/* =========================================================
+   Contratos y Préstamos
+   ========================================================= */
+
+// Generar contrato (PDF) para un préstamo
+export async function generarContratoPrestamo(id_prestamo: number) {
+  const { data } = await api.post(`/prestamos/${id_prestamo}/generar-contrato`, {});
+  // el backend suele devolver un string (ruta/archivo)
+  return data as string;
+}
+
+// Activar préstamo (desembolso)
+export type ActivarPrestamoPayload = {
+  fecha_desembolso: string; // ISO "YYYY-MM-DDTHH:mm:ss"
+  nota?: string;
+};
+
+export type ActivarPrestamoResponse = {
+  estado_anterior: string;            // "aprobado_pendiente_entrega"
+  estado_nuevo: string;               // "activo"
+  fecha_desembolso: string;
+  id_prestamo: number;
+  mensaje: string;
+};
+
+export async function activarPrestamo(
+  id_prestamo: number,
+  payload: ActivarPrestamoPayload
+) {
+  const { data } = await api.patch(`/prestamos/${id_prestamo}/activar`, payload);
+  return data as ActivarPrestamoResponse;
+}
+
+/* =========================================================
+   Cambiar estado de Solicitud (manual)
+   ========================================================= */
+export async function cambiarEstadoSolicitud(
+  id_solicitud: number,
+  nuevo_estado: "evaluada" | "rechazada" | string,
+  motivo?: string
+) {
   const { data } = await api.patch(`/admin/solicitudes/${id_solicitud}/estado`, {
     nuevo_estado,
     motivo,
@@ -101,7 +227,9 @@ export async function cambiarEstadoSolicitud(id_solicitud: number, nuevo_estado:
   return data;
 }
 
-/** ====== TIPO + FUNCIÓN TIPADA PARA STATS (evita any) ====== */
+/* =========================================================
+   Estadísticas Admin
+   ========================================================= */
 export type AdminStats = {
   total_solicitudes: number;
   por_estado: Record<string, number>;
