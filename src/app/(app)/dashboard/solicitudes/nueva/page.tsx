@@ -13,6 +13,15 @@ type Condicion = "nuevo" | "seminuevo" | "usado" | "malo";
 
 type TipoArticulo = { id_tipo: number; nombre: string };
 
+// Posibles formas en las que puede venir el catálogo desde el backend
+type TipoArticuloRow = {
+  id_tipo?: number;
+  IdTipo?: number;
+  id?: number;
+  nombre?: string;
+  Nombre?: string;
+};
+
 type ArtForm = {
   id_tipo: number | "";
   descripcion: string;
@@ -42,15 +51,25 @@ export default function NuevaSolicitudPage(): React.ReactElement {
     (async () => {
       try {
         setLoadingTipos(true);
-        const { data } = await api.get("/catalogos/tipos_articulo");
-        if (!mounted) return;
-        const items: TipoArticulo[] = (Array.isArray(data) ? data : []).map((t: any) => ({
-          id_tipo: Number(t.id_tipo ?? t.IdTipo ?? t.id ?? 0),
-          nombre: String(t.nombre ?? t.Nombre ?? "Tipo"),
+
+        // Tipamos la respuesta para evitar `any`
+        const { data } = await api.get<TipoArticuloRow[]>("/catalogos/tipos_articulo");
+        const rows: TipoArticuloRow[] = Array.isArray(data) ? data : [];
+
+        const items: TipoArticulo[] = rows.map((o) => ({
+          id_tipo: Number(o.id_tipo ?? o.IdTipo ?? o.id ?? 0),
+          nombre: String(o.nombre ?? o.Nombre ?? "Tipo"),
         }));
+
+        if (!mounted) return;
         setTipos(items);
+
+        // Si el primer artículo no tiene tipo seleccionado, asignamos el primero del catálogo
         setArticulos((prev) =>
-          prev.map((a) => ({ ...a, id_tipo: a.id_tipo === "" && items[0] ? items[0].id_tipo : a.id_tipo }))
+          prev.map((a) => ({
+            ...a,
+            id_tipo: a.id_tipo === "" && items[0] ? items[0].id_tipo : a.id_tipo,
+          })),
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : "No se pudieron cargar los tipos de artículo.");
@@ -136,13 +155,16 @@ export default function NuevaSolicitudPage(): React.ReactElement {
 
   const totalFotos = React.useMemo(
     () => articulos.reduce((acc, a) => acc + a.files.length, 0),
-    [articulos]
+    [articulos],
   );
 
   const totalEstimado = React.useMemo(
     () =>
-      articulos.reduce((acc, a) => acc + (Number.isFinite(Number(a.valor_estimado)) ? Number(a.valor_estimado) : 0), 0),
-    [articulos]
+      articulos.reduce(
+        (acc, a) => acc + (Number.isFinite(Number(a.valor_estimado)) ? Number(a.valor_estimado) : 0),
+        0,
+      ),
+    [articulos],
   );
 
   const validate = () => {
@@ -201,7 +223,7 @@ export default function NuevaSolicitudPage(): React.ReactElement {
       };
 
       const { data } = await api.post("/solicitudes-completa", payload);
-      router.push(`/dashboard/solicitudes/${data?.id_solicitud ?? ""}`);
+      router.push(`/dashboard/solicitudes/${(data as { id_solicitud?: string })?.id_solicitud ?? ""}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la solicitud.");
       setSubmitting(false);
@@ -452,13 +474,24 @@ export default function NuevaSolicitudPage(): React.ReactElement {
           <div className="text-sm">
             <div className="mb-2 font-medium text-blue-400">Resumen de la solicitud</div>
             <ul className="space-y-1 text-neutral-300">
-              <li>• Método: <span className="font-medium capitalize">{metodo}</span></li>
+              <li>
+                • Método: <span className="font-medium capitalize">{metodo}</span>
+              </li>
               {metodo === "domicilio" && direccion && (
-                <li>• Dirección: <span className="font-medium">{direccion}</span></li>
+                <li>
+                  • Dirección: <span className="font-medium">{direccion}</span>
+                </li>
               )}
-              <li>• Artículos: <span className="font-medium">{articulos.length}</span></li>
-              <li>• Fotos totales: <span className="font-medium">{totalFotos}</span></li>
-              <li>• Valor estimado total: <span className="font-medium text-emerald-400">Q {totalEstimado.toFixed(2)}</span></li>
+              <li>
+                • Artículos: <span className="font-medium">{articulos.length}</span>
+              </li>
+              <li>
+                • Fotos totales: <span className="font-medium">{totalFotos}</span>
+              </li>
+              <li>
+                • Valor estimado total:{" "}
+                <span className="font-medium text-emerald-400">Q {totalEstimado.toFixed(2)}</span>
+              </li>
             </ul>
           </div>
         </section>

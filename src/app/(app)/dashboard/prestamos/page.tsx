@@ -57,7 +57,8 @@ export default function PrestamosAdminPage(): React.ReactElement {
   const [hasta, setHasta] = React.useState<string>(sp.get("fecha_hasta") ?? "");
   const [venceAntes, setVenceAntes] = React.useState<string>(sp.get("vencimiento_antes") ?? "");
 
-  const [sort, setSort] = React.useState<"asc" | "desc">((sp.get("sort") as any) === "asc" ? "asc" : "desc");
+  // Fix: sin `as any`
+  const [sort, setSort] = React.useState<"asc" | "desc">(sp.get("sort") === "asc" ? "asc" : "desc");
   const [limit, setLimit] = React.useState<number>(Number(sp.get("limit") ?? 20) || 20);
   const [offset, setOffset] = React.useState<number>(Number(sp.get("offset") ?? 0) || 0);
 
@@ -452,8 +453,12 @@ export default function PrestamosAdminPage(): React.ReactElement {
               </label>
 
               <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-neutral-300">
-                <div>Fecha inicio: <span className="font-mono">{isoDate(hoy)}</span></div>
-                <div>Fecha vencimiento: <span className="font-mono">{isoDate(vto)}</span></div>
+                <div>
+                  Fecha inicio: <span className="font-mono">{isoDate(hoy)}</span>
+                </div>
+                <div>
+                  Fecha vencimiento: <span className="font-mono">{isoDate(vto)}</span>
+                </div>
               </div>
 
               <div className="mt-2 flex items-center justify-end gap-2">
