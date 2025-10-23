@@ -3,11 +3,27 @@ import api from "@/lib/api";
 
 export type EstadoFirma = "pendiente" | "parcial" | "completo";
 
-export type Contrato = {
+/* ===== Tipos nuevos / actualizados (alineados a schemas) ===== */
+export type EstadoResumen = { id: number; nombre: string };
+
+export type ArticuloResumen = { descripcion?: string | null };
+
+export type PrestamoResumen = {
+  monto_prestamo: number;
+  fecha_inicio: string | null;
+  fecha_vencimiento: string | null;
+  deuda_actual: number;
+  mora_acumulada: number;
+  interes_acumulada: number;
+  estado: EstadoResumen;
+  articulo: ArticuloResumen;
+};
+
+export type ContratoBase = {
   id_contrato: number;
   id_prestamo: number;
   url_pdf: string;
-  hash_doc: string;
+  hash_doc: string | null;
   firma_cliente_en: string | null;
   firma_empresa_en: string | null;
   owner_id?: number | null;
@@ -15,7 +31,11 @@ export type Contrato = {
   updated_at?: string | null;
 };
 
-export type ContratoAdminRow = Contrato & {
+export type ContratoDetalle = ContratoBase & {
+  prestamo: PrestamoResumen; // <-- NUEVO (del backend)
+};
+
+export type ContratoAdminRow = ContratoBase & {
   articulo?: string | null;
   monto_prestamo?: number;
   fecha_inicio?: string | null;
@@ -30,81 +50,47 @@ export type ContratoListResponse = {
   items: ContratoAdminRow[];
 };
 
-/**
- * GET /contratos/{id} - Obtener detalle de contrato
- */
+/* =========================
+   Helpers de URL (BACKEND)
+   ========================= */
+function base() {
+  return api.defaults.baseURL?.replace(/\/+$/, "") || "";
+}
+
+/** URL que redirige (descarga/visor nativo del navegador) */
+export function urlAbrirContrato(id_contrato: number) {
+  return `${base()}/contratos/${id_contrato}/abrir`;
+}
+
+/** URL que stream-ea el PDF via backend (seguro para <iframe>) */
+export function urlVerContrato(id_contrato: number) {
+  return `${base()}/contratos/${id_contrato}/ver`;
+}
+
+/** (Opcional) Obtener un Blob URL del PDF via backend */
+export async function urlBlobContrato(id_contrato: number) {
+  const resp = await api.get(`/contratos/${id_contrato}/ver`, { responseType: "blob" });
+  const blob = new Blob([resp.data], { type: "application/pdf" });
+  return URL.createObjectURL(blob);
+}
+
+/* =========================
+   Endpoints principales
+   ========================= */
+
+/** GET /contratos/{id} */
 export async function obtenerContrato(id_contrato: number) {
-  try {
-    console.log(`🔍 Obteniendo contrato ${id_contrato}...`);
-    
-    const { data } = await api.get<Contrato>(`/contratos/${id_contrato}`);
-    
-    console.log("✅ Contrato obtenido:", data);
-    return data;
-  } catch (error: any) {
-    console.error(`❌ Error obtenerContrato(${id_contrato}):`, {
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      message: error.message,
-      config: {
-        url: error.config?.url,
-        method: error.config?.method,
-        headers: error.config?.headers,
-      }
-    });
-    
-    // Mensajes de error específicos
-    if (error.response?.status === 404) {
-      throw new Error("Contrato no encontrado");
-    }
-    
-    if (error.response?.status === 403) {
-      throw new Error("No tienes permiso para ver este contrato");
-    }
-    
-    if (error.response?.status === 401) {
-      throw new Error("Tu sesión ha expirado. Por favor inicia sesión nuevamente.");
-    }
-    
-    // Error genérico con detalle del backend si existe
-    const detalle = error.response?.data?.detail || error.message || "Error desconocido";
-    throw new Error(`No se pudo cargar el contrato: ${detalle}`);
-  }
+  const { data } = await api.get<ContratoDetalle>(`/contratos/${id_contrato}`);
+  return data;
 }
 
-/**
- * GET /contratos/mis - Mis contratos
- */
+/** GET /contratos/mis */
 export async function misContratos() {
-  try {
-    console.log("🔍 Obteniendo mis contratos...");
-    
-    const { data } = await api.get<Contrato[]>("/contratos/mis");
-    
-    console.log("✅ Mis contratos obtenidos:", data.length);
-    return data;
-  } catch (error: any) {
-    console.error("❌ Error misContratos:", {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-    });
-    
-    if (error.response?.status === 401) {
-      throw new Error("Tu sesión ha expirado");
-    }
-    
-    throw new Error(
-      error.response?.data?.detail || 
-      "No se pudieron cargar tus contratos"
-    );
-  }
+  const { data } = await api.get<ContratoBase[]>("/contratos/mis");
+  return data;
 }
 
-/**
- * GET /contratos - Listar contratos (admin)
- */
+/** GET /contratos (admin) */
 export async function listarContratos(params?: {
   q?: string;
   usuario_id?: number;
@@ -116,135 +102,31 @@ export async function listarContratos(params?: {
   limit?: number;
   offset?: number;
 }) {
-  try {
-    console.log("🔍 Listando contratos con params:", params);
-    
-    const { data } = await api.get<ContratoListResponse>("/contratos", { params });
-    
-    console.log("✅ Contratos listados:", data.total);
-    return data;
-  } catch (error: any) {
-    console.error("❌ Error listarContratos:", {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-    });
-    
-    throw new Error(
-      error.response?.data?.detail || 
-      "No se pudieron cargar los contratos"
-    );
-  }
+  const { data } = await api.get<ContratoListResponse>("/contratos", { params });
+  return data;
 }
 
-/**
- * POST /contratos/{id}/firmar
- */
+/** POST /contratos/{id}/firmar */
 export async function firmarContrato(
   id_contrato: number,
-  body: { 
-    firmante: "cliente" | "empresa"; 
-    firma_digital: string; 
-    ip?: string;
-  }
+  body: { firmante: "cliente" | "empresa"; firma_digital: string; ip?: string }
 ) {
-  try {
-    console.log(`🔍 Firmando contrato ${id_contrato} como ${body.firmante}...`);
-    
-    const { data } = await api.post(`/contratos/${id_contrato}/firmar`, body);
-    
-    console.log("✅ Firma registrada:", data);
-    return data as {
-      id_contrato: number;
-      firmante: "cliente" | "empresa";
-      firma_registrada_en: string;
-      contrato_completado: boolean;
-    };
-  } catch (error: any) {
-    console.error("❌ Error firmarContrato:", error.response?.data || error.message);
-    
-    if (error.response?.status === 403) {
-      throw new Error(`No tienes permiso para firmar como ${body.firmante}`);
-    }
-    
-    if (error.response?.status === 404) {
-      throw new Error("Contrato no encontrado");
-    }
-    
-    throw new Error(
-      error.response?.data?.detail || 
-      "No se pudo registrar la firma"
-    );
-  }
+  const { data } = await api.post(`/contratos/${id_contrato}/firmar`, body);
+  return data as {
+    id_contrato: number;
+    firmante: "cliente" | "empresa";
+    firma_registrada_en: string;
+    contrato_completado: boolean;
+  };
 }
 
-/**
- * POST /contratos/{id}/firmar-cripto
- */
+/** POST /contratos/{id}/firmar-cripto */
 export async function firmarCriptograficamente(id_contrato: number) {
-  try {
-    console.log(`🔍 Firmando criptográficamente contrato ${id_contrato}...`);
-    
-    const { data } = await api.post(`/contratos/${id_contrato}/firmar-cripto`);
-    
-    console.log("✅ Firma criptográfica registrada:", data);
-    return data as { 
-      id_contrato: number; 
-      url_pdf: string; 
-      hash_doc: string; 
-      firmado_cripto: boolean;
-    };
-  } catch (error: any) {
-    console.error("❌ Error firmarCriptograficamente:", error.response?.data || error.message);
-    
-    if (error.response?.status === 500) {
-      throw new Error("Firma criptográfica no disponible en el servidor");
-    }
-    
-    throw new Error(
-      error.response?.data?.detail || 
-      "No se pudo firmar criptográficamente"
-    );
-  }
-}
-
-/**
- * POST /prestamos/{id_prestamo}/generar-contrato
- */
-export async function generarContrato(id_prestamo: number) {
-  try {
-    console.log(`🔍 Generando contrato para préstamo ${id_prestamo}...`);
-    
-    const { data } = await api.post(`/prestamos/${id_prestamo}/generar-contrato`);
-    
-    console.log("✅ Contrato generado:", data);
-    return data as {
-      id_contrato: number;
-      id_prestamo: number;
-      url_pdf: string;
-      hash_doc: string;
-      estado: string;
-      firma_cliente_en: string | null;
-      firma_empresa_en: string | null;
-    };
-  } catch (error: any) {
-    console.error("❌ Error generarContrato:", error.response?.data || error.message);
-    
-    if (error.response?.status === 403) {
-      throw new Error("Solo ADMINISTRADOR o VALUADOR pueden generar contratos");
-    }
-    
-    if (error.response?.status === 404) {
-      throw new Error("Préstamo no encontrado");
-    }
-    
-    if (error.response?.status === 409) {
-      throw new Error("Ya existe un contrato para este préstamo");
-    }
-    
-    throw new Error(
-      error.response?.data?.detail || 
-      "No se pudo generar el contrato"
-    );
-  }
+  const { data } = await api.post(`/contratos/${id_contrato}/firmar-cripto`);
+  return data as {
+    id_contrato: number;
+    url_pdf: string;
+    hash_doc: string;
+    firmado_cripto: boolean;
+  };
 }

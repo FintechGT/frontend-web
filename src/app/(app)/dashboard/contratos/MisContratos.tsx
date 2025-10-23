@@ -3,11 +3,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { misContratos, Contrato } from "@/app/services/contratos";
-import { FileText, Download, CheckCircle2, Clock, AlertCircle, Loader2 } from "lucide-react";
+import { misContratos, type ContratoBase, urlVerContrato, urlAbrirContrato } from "@/app/services/contratos";
+import { FileText, Download, CheckCircle2, Clock, AlertCircle, Loader2, Eye } from "lucide-react";
 
 export default function MisContratos() {
-  const [rows, setRows] = React.useState<Contrato[]>([]);
+  const [rows, setRows] = React.useState<ContratoBase[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -105,7 +105,16 @@ export default function MisContratos() {
 
                   <div className="flex gap-2">
                     <a
-                      href={c.url_pdf}
+                      href={urlVerContrato(c.id_contrato)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
+                    >
+                      <Eye className="size-4" />
+                      Ver
+                    </a>
+                    <a
+                      href={urlAbrirContrato(c.id_contrato)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
@@ -117,7 +126,7 @@ export default function MisContratos() {
                       href={`/dashboard/contratos/${c.id_contrato}`}
                       className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium hover:bg-blue-500"
                     >
-                      Ver Detalle
+                      Detalle
                     </Link>
                   </div>
                 </div>

@@ -1,53 +1,112 @@
 // src/lib/api.ts
-import axios from "axios";
+import axios, { AxiosError } from "axios";
+
+/**
+ * Resolución del baseURL:
+ * - Si NEXT_PUBLIC_USE_PROXY === "1" -> usamos /api/proxy (Next route handler).
+ * - Si no, usamos NEXT_PUBLIC_API_URL (o fallback http://127.0.0.1:8000).
+ */
+const useProxy = process.env.NEXT_PUBLIC_USE_PROXY === "1";
+const rawBase =
+  useProxy
+    ? "/api/proxy"
+    : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000");
+
+// Normaliza: sin slashes finales duplicados
+export const baseURL = rawBase.replace(/\/+$/, "");
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  baseURL,
   timeout: 30000,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  // OJO: por defecto JSON; cuando necesites blob, pásalo por request (no aquí).
+  headers: { "Content-Type": "application/json" },
+  // Estamos usando Bearer (no cookies de sesión)
+  withCredentials: false,
+  // Sólo considera éxito 2xx. Fuera de eso, cae al interceptor de error.
+  validateStatus: (s) => s >= 200 && s < 300,
 });
 
-// ✅ Interceptor para añadir token
+/**
+ * Interceptor de REQUEST:
+ * - Inyecta Authorization: Bearer <token> desde localStorage si existe.
+ */
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("access_token") || localStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (typeof window !== "undefined") {
+      const token =
+        window.localStorage.getItem("access_token") ||
+        window.localStorage.getItem("token");
+      if (token) {
+        config.headers = config.headers ?? {};
+        (config.headers as any).Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
-// ✅ Interceptor de respuesta MEJORADO (manejo seguro de errores)
+/**
+ * Interceptor de RESPONSE:
+ * - Manejo de errores de red (CORS / backend caído) con mensaje claro.
+ * - Log de errores de API con método, url y payload de error.
+ * - Si 401, limpiamos storage y redirigimos a /login.
+ *
+ * NOTA: No toca llamadas de generar/firmar contrato; esas siguen igual,
+ * y si alguna requiere blob, pásalo en la llamada:
+ *   api.get(url, { responseType: "blob" })
+ */
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Manejo seguro: verifica que las propiedades existan antes de acceder
-    const errorDetails = {
-      url: error.config?.url || "unknown",
-      method: error.config?.method?.toUpperCase() || "unknown",
-      status: error.response?.status || 0,
-      statusText: error.response?.statusText || "unknown",
-      data: error.response?.data || null,
-      message: error.message || "Unknown error",
-    };
+  (r) => r,
+  (error: AxiosError<any>) => {
+    // Sin respuesta -> caída de red / CORS / DNS
+    if (!error.response) {
+      const url = (error.config?.baseURL || "") + (error.config?.url || "");
+      console.error("❌ API Network Error:", {
+        url,
+        code: error.code,
+        msg: error.message,
+      });
+      return Promise.reject(
+        new Error(
+          `No se pudo conectar con la API (${url}). ` +
+          (useProxy
+            ? "Revisa el proxy /api/proxy y que NEXT_PUBLIC_API_URL apunte bien."
+            : "Revisa CORS en el backend y que la URL sea accesible desde http://localhost:3000.")
+        )
+      );
+    }
 
-    console.error("❌ API Error:", errorDetails);
+    // Con respuesta -> error HTTP
+    const { status, statusText, data } = error.response;
+    const method = error.config?.method?.toUpperCase() || "GET";
+    const fullUrl = (error.config?.baseURL || "") + (error.config?.url || "");
 
-    // Redirigir a login si es 401
-    if (error.response?.status === 401) {
-      console.warn("🔒 No autorizado - token inválido o expirado");
-      if (typeof window !== "undefined") {
-        localStorage.clear();
+    console.error("❌ API Error:", {
+      method,
+      url: fullUrl,
+      status,
+      statusText,
+      data,
+    });
+
+    if (status === 401 && typeof window !== "undefined") {
+      try { window.localStorage.clear(); } catch {}
+      // Evita bucle si ya estás en /login
+      if (!window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";
       }
     }
 
-    return Promise.reject(error);
-  }
+    const msg =
+      (typeof data === "string" && data) ||
+      (typeof data?.detail === "string" && data.detail) ||
+      (Array.isArray(data?.detail) && data.detail[0]?.msg) ||
+      (data?.message as string) ||
+      `Error ${status}: ${statusText || "API"}`;
+
+    return Promise.reject(new Error(msg));
+  },
 );
 
 export default api;

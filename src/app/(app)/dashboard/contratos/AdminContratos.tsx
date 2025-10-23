@@ -1,10 +1,26 @@
-// src/app/(app)/dashboard/contratos/AdminContratos.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import { listarContratos, EstadoFirma, ContratoAdminRow, ContratoListResponse } from "@/app/services/contratos";
-import { RefreshCw, Search, Filter, AlertCircle, Loader2, Download, CheckCircle2, Clock } from "lucide-react";
+import {
+  listarContratos,
+  EstadoFirma,
+  ContratoAdminRow,
+  ContratoListResponse,
+  urlVerContrato,
+  urlAbrirContrato,
+} from "@/app/services/contratos";
+import {
+  RefreshCw,
+  Search,
+  Filter,
+  AlertCircle,
+  Loader2,
+  Download,
+  CheckCircle2,
+  Clock,
+  Eye,
+} from "lucide-react";
 
 function human(error: unknown) {
   if (typeof error === "string") return error;
@@ -157,10 +173,21 @@ export default function AdminContratos() {
                         <td className="p-2">
                           <div className="flex gap-2">
                             <a
-                              href={it.url_pdf}
+                              href={urlVerContrato(it.id_contrato)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs hover:bg-white/5"
+                              title="Ver en visor"
+                            >
+                              <Eye className="size-3.5" />
+                              Ver
+                            </a>
+                            <a
+                              href={urlAbrirContrato(it.id_contrato)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs hover:bg-white/5"
+                              title="Descargar/Abrir"
                             >
                               <Download className="size-3.5" />
                               PDF
