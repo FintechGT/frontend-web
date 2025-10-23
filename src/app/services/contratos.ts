@@ -30,86 +30,115 @@ export type ContratoListResponse = {
   items: ContratoAdminRow[];
 };
 
-// -------- ENDPOINTS -----------------
+/**
+ * GET /contratos/{id} - Obtener detalle de contrato
+ */
+export async function obtenerContrato(id_contrato: number) {
+  try {
+    console.log(`🔍 Obteniendo contrato ${id_contrato}...`);
+    
+    const { data } = await api.get<Contrato>(`/contratos/${id_contrato}`);
+    
+    console.log("✅ Contrato obtenido:", data);
+    return data;
+  } catch (error: any) {
+    console.error(`❌ Error obtenerContrato(${id_contrato}):`, {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers,
+      }
+    });
+    
+    // Mensajes de error específicos
+    if (error.response?.status === 404) {
+      throw new Error("Contrato no encontrado");
+    }
+    
+    if (error.response?.status === 403) {
+      throw new Error("No tienes permiso para ver este contrato");
+    }
+    
+    if (error.response?.status === 401) {
+      throw new Error("Tu sesión ha expirado. Por favor inicia sesión nuevamente.");
+    }
+    
+    // Error genérico con detalle del backend si existe
+    const detalle = error.response?.data?.detail || error.message || "Error desconocido";
+    throw new Error(`No se pudo cargar el contrato: ${detalle}`);
+  }
+}
 
 /**
- * GET /contratos?q=...&estado_firma=...
- * Admin puede ver todos, usuarios solo los suyos
+ * GET /contratos/mis - Mis contratos
+ */
+export async function misContratos() {
+  try {
+    console.log("🔍 Obteniendo mis contratos...");
+    
+    const { data } = await api.get<Contrato[]>("/contratos/mis");
+    
+    console.log("✅ Mis contratos obtenidos:", data.length);
+    return data;
+  } catch (error: any) {
+    console.error("❌ Error misContratos:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
+    
+    if (error.response?.status === 401) {
+      throw new Error("Tu sesión ha expirado");
+    }
+    
+    throw new Error(
+      error.response?.data?.detail || 
+      "No se pudieron cargar tus contratos"
+    );
+  }
+}
+
+/**
+ * GET /contratos - Listar contratos (admin)
  */
 export async function listarContratos(params?: {
   q?: string;
   usuario_id?: number;
   prestamo_id?: number;
   estado_firma?: EstadoFirma;
-  fecha_desde?: string; // YYYY-MM-DD
-  fecha_hasta?: string; // YYYY-MM-DD
+  fecha_desde?: string;
+  fecha_hasta?: string;
   orden?: "reciente" | "antiguo";
   limit?: number;
   offset?: number;
 }) {
   try {
-    const { data } = await api.get<ContratoListResponse>("/contratos", { 
-      params,
-      // Asegura que axios serialice correctamente los params
-      paramsSerializer: {
-        indexes: null, // evita [] en arrays
-      }
+    console.log("🔍 Listando contratos con params:", params);
+    
+    const { data } = await api.get<ContratoListResponse>("/contratos", { params });
+    
+    console.log("✅ Contratos listados:", data.total);
+    return data;
+  } catch (error: any) {
+    console.error("❌ Error listarContratos:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
     });
-    return data;
-  } catch (error: any) {
-    console.error("❌ Error en listarContratos:", error.response?.data || error.message);
-    throw new Error(
-      error.response?.data?.detail || 
-      "No se pudieron cargar los contratos. Verifica tu conexión."
-    );
-  }
-}
-
-/**
- * GET /contratos/mis
- * Obtiene solo los contratos del usuario autenticado
- */
-export async function misContratos() {
-  try {
-    const { data } = await api.get<Contrato[]>("/contratos/mis");
-    return data;
-  } catch (error: any) {
-    console.error("❌ Error en misContratos:", error.response?.data || error.message);
-    throw new Error(
-      error.response?.data?.detail || 
-      "No se pudieron cargar tus contratos."
-    );
-  }
-}
-
-/**
- * GET /contratos/{id}
- * Obtiene detalle de un contrato específico
- */
-export async function obtenerContrato(id_contrato: number) {
-  try {
-    const { data } = await api.get<Contrato>(`/contratos/${id_contrato}`);
-    return data;
-  } catch (error: any) {
-    console.error(`❌ Error al obtener contrato ${id_contrato}:`, error.response?.data || error.message);
-    
-    if (error.response?.status === 404) {
-      throw new Error("Contrato no encontrado");
-    }
-    if (error.response?.status === 403) {
-      throw new Error("No tienes permiso para ver este contrato");
-    }
     
     throw new Error(
       error.response?.data?.detail || 
-      "No se pudo cargar el contrato"
+      "No se pudieron cargar los contratos"
     );
   }
 }
 
 /**
  * POST /contratos/{id}/firmar
- * Registra una firma digital (cliente o empresa)
  */
 export async function firmarContrato(
   id_contrato: number,
@@ -120,7 +149,11 @@ export async function firmarContrato(
   }
 ) {
   try {
+    console.log(`🔍 Firmando contrato ${id_contrato} como ${body.firmante}...`);
+    
     const { data } = await api.post(`/contratos/${id_contrato}/firmar`, body);
+    
+    console.log("✅ Firma registrada:", data);
     return data as {
       id_contrato: number;
       firmante: "cliente" | "empresa";
@@ -128,11 +161,12 @@ export async function firmarContrato(
       contrato_completado: boolean;
     };
   } catch (error: any) {
-    console.error("❌ Error al firmar contrato:", error.response?.data || error.message);
+    console.error("❌ Error firmarContrato:", error.response?.data || error.message);
     
     if (error.response?.status === 403) {
-      throw new Error("No tienes permiso para firmar como " + body.firmante);
+      throw new Error(`No tienes permiso para firmar como ${body.firmante}`);
     }
+    
     if (error.response?.status === 404) {
       throw new Error("Contrato no encontrado");
     }
@@ -146,11 +180,14 @@ export async function firmarContrato(
 
 /**
  * POST /contratos/{id}/firmar-cripto
- * Firma criptográfica con certificado X.509 (requiere config en servidor)
  */
 export async function firmarCriptograficamente(id_contrato: number) {
   try {
+    console.log(`🔍 Firmando criptográficamente contrato ${id_contrato}...`);
+    
     const { data } = await api.post(`/contratos/${id_contrato}/firmar-cripto`);
+    
+    console.log("✅ Firma criptográfica registrada:", data);
     return data as { 
       id_contrato: number; 
       url_pdf: string; 
@@ -158,7 +195,7 @@ export async function firmarCriptograficamente(id_contrato: number) {
       firmado_cripto: boolean;
     };
   } catch (error: any) {
-    console.error("❌ Error en firma criptográfica:", error.response?.data || error.message);
+    console.error("❌ Error firmarCriptograficamente:", error.response?.data || error.message);
     
     if (error.response?.status === 500) {
       throw new Error("Firma criptográfica no disponible en el servidor");
@@ -173,11 +210,14 @@ export async function firmarCriptograficamente(id_contrato: number) {
 
 /**
  * POST /prestamos/{id_prestamo}/generar-contrato
- * Genera el PDF del contrato (solo ADMIN/VALUADOR)
  */
 export async function generarContrato(id_prestamo: number) {
   try {
+    console.log(`🔍 Generando contrato para préstamo ${id_prestamo}...`);
+    
     const { data } = await api.post(`/prestamos/${id_prestamo}/generar-contrato`);
+    
+    console.log("✅ Contrato generado:", data);
     return data as {
       id_contrato: number;
       id_prestamo: number;
@@ -188,19 +228,18 @@ export async function generarContrato(id_prestamo: number) {
       firma_empresa_en: string | null;
     };
   } catch (error: any) {
-    console.error("❌ Error al generar contrato:", error.response?.data || error.message);
+    console.error("❌ Error generarContrato:", error.response?.data || error.message);
     
     if (error.response?.status === 403) {
       throw new Error("Solo ADMINISTRADOR o VALUADOR pueden generar contratos");
     }
+    
     if (error.response?.status === 404) {
       throw new Error("Préstamo no encontrado");
     }
+    
     if (error.response?.status === 409) {
       throw new Error("Ya existe un contrato para este préstamo");
-    }
-    if (error.response?.status === 400) {
-      throw new Error(error.response.data?.detail || "Estado del préstamo no válido para generar contrato");
     }
     
     throw new Error(
