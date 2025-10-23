@@ -1,76 +1,108 @@
-// src/lib/api.ts
-import axios, { AxiosError } from "axios";
+// ============================================================
+// src/app/services/contratos.ts
+// ============================================================
 
-/** Base URL configurable desde el entorno */
-const baseURL = (process.env.NEXT_PUBLIC_API_URL || "/api").replace(/\/+$/, "");
+import api from "@/lib/api";
 
-/** Tipo auxiliar para validar objetos JSON */
-type JsonRecord = Record<string, unknown>;
-function isRecord(x: unknown): x is JsonRecord {
-  return typeof x === "object" && x !== null && !Array.isArray(x);
-}
+export type EstadoFirma = "pendiente" | "parcial" | "completo";
 
-/** Instancia principal de Axios */
-const api = axios.create({
-  baseURL,
-  withCredentials: false,
-  timeout: 15000,
-  headers: { "Content-Type": "application/json" },
-});
+export type Contrato = {
+  id_contrato: number;
+  id_prestamo: number;
+  url_pdf: string;
+  hash_doc: string;
+  firma_cliente_en: string | null;
+  firma_empresa_en: string | null;
+  owner_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
 
-/** Interceptor de solicitud: agrega token si existe */
-if (typeof window !== "undefined") {
-  api.interceptors.request.use((config) => {
-    const token = localStorage.getItem("access_token");
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return config;
-  });
-}
+export type ContratoAdminRow = Contrato & {
+  articulo?: string | null;
+  monto_prestamo?: number;
+  fecha_inicio?: string | null;
+  fecha_vencimiento?: string | null;
+};
 
-/** Interceptor de respuesta: manejo uniforme de errores */
-api.interceptors.response.use(
-  (response) => response,
-  (error: unknown) => {
-    if (axios.isAxiosError(error)) {
-      const ax = error as AxiosError<unknown>;
-      const status = ax.response?.status;
-      const statusText = ax.response?.statusText || "";
-      const data = ax.response?.data;
+export type ContratoListResponse = {
+  total: number;
+  limit: number;
+  offset: number;
+  es_admin: boolean;
+  items: ContratoAdminRow[];
+};
 
-      let detail = "";
-      if (typeof data === "string") {
-        detail = data;
-      } else if (isRecord(data)) {
-        if (typeof data.detail === "string") detail = data.detail;
-        else if (typeof data.message === "string") detail = data.message;
-        else detail = JSON.stringify(data);
-      }
+// ============================================================
+// Helper para manejar rutas con y sin slash
+// ============================================================
 
-      let fullUrl = "";
-      try {
-        const path = ax.config?.url || "";
-        fullUrl = baseURL ? new URL(path, baseURL).toString() : path;
-      } catch {
-        fullUrl = ax.config?.url || "";
-      }
-
-      let msg: string;
-      if (status) {
-        msg = `[${status}] ${statusText} ${detail}`.trim();
-        if (fullUrl) msg += ` @ ${fullUrl}`;
-      } else if (ax.code === "ERR_NETWORK") {
-        msg = `ERR_NETWORK: posible CORS/SSL/servidor caído${fullUrl ? ` @ ${fullUrl}` : ""}`;
-      } else {
-        msg = ax.message || "Network Error";
-      }
-
-      return Promise.reject(new Error(msg));
-    }
-
-    // Si no es AxiosError
-    const msg = error instanceof Error ? error.message : "Network Error";
-    return Promise.reject(new Error(msg));
+async function getWithSlashFallback<T>(path: string, params?: any) {
+  try {
+    // Intentar primero con el path tal cual
+    const { data } = await api.get<T>(path, { params });
+    return data;
+  } catch (e) {
+    // Si falla, intentar con la versión alterna (agregar o quitar slash)
+    const alt = path.endsWith("/") ? path.slice(0, -1) : `${path}/`;
+    const { data } = await api.get<T>(alt, { params });
+    return data;
   }
-);
+}
 
-export default api;
+// ============================================================
+// ENDPOINTS
+// ============================================================
+
+/** Lista todos los contratos (modo administrador) */
+export async function listarContratos(q?: {
+  q?: string;
+  usuario_id?: number;
+  prestamo_id?: number;
+  estado_firma?: EstadoFirma;
+  fecha_desde?: string; // YYYY-MM-DD
+  fecha_hasta?: string; // YYYY-MM-DD
+  orden?: "reciente" | "antiguo";
+  limit?: number;
+  offset?: number;
+}) {
+  // ⚠️ importante: usa /contratos/ (con slash) para evitar el redirect del backend
+  return getWithSlashFallback<ContratoListResponse>("/contratos/", q);
+}
+
+/** Contratos del usuario autenticado */
+export async function misContratos() {
+  const { data } = await api.get<Contrato[]>("/contratos/mis");
+  return data;
+}
+
+/** Detalle de un contrato específico */
+export async function obtenerContrato(id_contrato: number) {
+  const { data } = await api.get<Contrato>(`/contratos/${id_contrato}`);
+  return data;
+}
+
+/** Firma un contrato (cliente o empresa) */
+export async function firmarContrato(
+  id_contrato: number,
+  body: { firmante: "cliente" | "empresa"; firma_digital: string; ip?: string }
+) {
+  const { data } = await api.post(`/contratos/${id_contrato}/firmar`, body);
+  return data as {
+    id_contrato: number;
+    firmante: "cliente" | "empresa";
+    firma_registrada_en: string;
+    contrato_completado: boolean;
+  };
+}
+
+/** Firma criptográficamente (solo admin) */
+export async function firmarCriptograficamente(id_contrato: number) {
+  const { data } = await api.post(`/contratos/${id_contrato}/firmar-cripto`);
+  return data as {
+    id_contrato: number;
+    url_pdf: string;
+    hash_doc: string;
+    firmado_cripto: boolean;
+  };
+}

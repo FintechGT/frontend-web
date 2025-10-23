@@ -1,4 +1,3 @@
-// src/app/services/adminSolicitudes.ts
 import api from "@/lib/api";
 
 /* =========================================================
@@ -136,7 +135,7 @@ export type AprobarArticuloResponse = {
 export async function aprobarArticulo(
   id_articulo: number,
   payload: AprobarArticuloPayload
-) {
+): Promise<AprobarArticuloResponse> {
   const { data } = await api.post(`/articulos/${id_articulo}/aprobar`, payload);
   return data as AprobarArticuloResponse;
 }
@@ -152,7 +151,7 @@ export type RechazarArticuloResponse = {
 export async function rechazarArticulo(
   id_articulo: number,
   payload: RechazarArticuloPayload
-) {
+): Promise<RechazarArticuloResponse> {
   const { data } = await api.patch(
     `/articulo/rechazar/${id_articulo}/rechazar`,
     payload
@@ -165,7 +164,7 @@ export async function rechazarArticulo(
    ========================================================= */
 export type ReglaTipoArticulo = {
   id_tipo: number;
-  porcentaje_max_prestamo: number; // ej. 0.8  (80% del valor_estimado)
+  porcentaje_max_prestamo: number; // ej. 0.8 (80% del valor_estimado)
   // agrega aquí otros campos que tenga tu API si los necesitas
 };
 
@@ -183,11 +182,28 @@ export async function obtenerReglaTipoArticulo(id_tipo: number): Promise<ReglaTi
    Contratos y Préstamos
    ========================================================= */
 
+// Respuesta estandarizada al generar contrato
+export type GenerarContratoPrestamoResponse = {
+  id_contrato: number;
+  id_prestamo: number;
+  url_pdf: string;
+  hash_doc: string;                 // tu backend devuelve "sha256:..." o el hash plano
+  estado: "pendiente_firma" | "firmado_parcial" | "firmado_completo" | string;
+  firma_cliente_en: string | null;
+  firma_empresa_en: string | null;
+};
+
 // Generar contrato (PDF) para un préstamo
-export async function generarContratoPrestamo(id_prestamo: number) {
-  const { data } = await api.post(`/prestamos/${id_prestamo}/generar-contrato`, {});
-  // el backend suele devolver un string (ruta/archivo)
-  return data as string;
+export async function generarContratoPrestamo(
+  id_prestamo: number,
+  payload: { template?: "estandar" | "express" | "premium"; firmar_automaticamente?: boolean } = {}
+): Promise<GenerarContratoPrestamoResponse> {
+  const body = { template: "estandar", firmar_automaticamente: false, ...payload };
+  const { data } = await api.post<GenerarContratoPrestamoResponse>(
+    `/prestamos/${id_prestamo}/generar-contrato`,
+    body
+  );
+  return data;
 }
 
 // Activar préstamo (desembolso)
@@ -197,8 +213,8 @@ export type ActivarPrestamoPayload = {
 };
 
 export type ActivarPrestamoResponse = {
-  estado_anterior: string;            // "aprobado_pendiente_entrega"
-  estado_nuevo: string;               // "activo"
+  estado_anterior: string;  // "aprobado_pendiente_entrega"
+  estado_nuevo: string;     // "activo"
   fecha_desembolso: string;
   id_prestamo: number;
   mensaje: string;
@@ -207,7 +223,7 @@ export type ActivarPrestamoResponse = {
 export async function activarPrestamo(
   id_prestamo: number,
   payload: ActivarPrestamoPayload
-) {
+): Promise<ActivarPrestamoResponse> {
   const { data } = await api.patch(`/prestamos/${id_prestamo}/activar`, payload);
   return data as ActivarPrestamoResponse;
 }
