@@ -46,8 +46,36 @@ export default function RegisterPage() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
+    // ✅ Validaciones manuales en orden lógico
+    if (!nombre.trim()) {
+      toast.error("Por favor ingresa tu nombre");
+      return;
+    }
+
+    if (!email.trim()) {
+      toast.error("Por favor ingresa tu correo");
+      return;
+    }
+
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error("Por favor ingresa un correo válido");
+      return;
+    }
+
+    if (!password) {
+      toast.error("Por favor ingresa una contraseña");
+      return;
+    }
+
+    if (password.length < 6) {
+      toast.error("La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+
     if (!isDomainAllowed(email)) {
-      toast.error("Dominio de correo no permitido.");
+      toast.error("Dominio de correo no permitido");
       return;
     }
 
@@ -59,7 +87,7 @@ export default function RegisterPage() {
         password,
       };
       await registerUser(payload);
-      toast.success("Cuenta creada. Ahora inicia sesión.");
+      toast.success("Cuenta creada exitosamente. Ahora inicia sesión.");
       setNombre("");
       setEmail("");
       setPassword("");
@@ -109,7 +137,7 @@ export default function RegisterPage() {
             placeholder="Tu nombre"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
-            required
+            disabled={loading}
           />
         </label>
 
@@ -121,12 +149,12 @@ export default function RegisterPage() {
             placeholder="tucorreo@dominio.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
+            disabled={loading}
           />
         </label>
 
         <label className="block">
-          <span className="text-sm text-neutral-300">Contraseña</span>
+          <span className="text-sm text-neutral-300">Contraseña (mínimo 6 caracteres)</span>
           <div className="relative">
             <input
               type={showPass ? "text" : "password"}
@@ -134,14 +162,14 @@ export default function RegisterPage() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
+              disabled={loading}
             />
             <button
               type="button"
               onClick={() => setShowPass((s) => !s)}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-200"
               aria-label={showPass ? "Ocultar contraseña" : "Mostrar contraseña"}
+              disabled={loading}
             >
               {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
@@ -152,7 +180,7 @@ export default function RegisterPage() {
           disabled={loading}
           className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 py-2 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition"
         >
-          {loading ? "Creando…" : "Registrarme"}
+          {loading ? "Creando cuenta…" : "Registrarme"}
         </button>
 
         <div className="flex items-center gap-3 my-2">
@@ -176,3 +204,7 @@ export default function RegisterPage() {
     </main>
   );
 }
+
+
+
+
