@@ -1,16 +1,16 @@
-// src/app/(app)/dashboard/prestamos/page.tsx
+// src/app/(app)/dashboard/prestamos/PrestamosAdminPage.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { Loader2, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
 import api from "@/lib/api";
 
 type PrestamoItem = {
   id_prestamo: number;
   id_articulo: number;
-  estado: { id: number; nombre: string } | string | null; // acepta objeto o string
+  estado: { id: number; nombre: string } | string | null;
   fecha_inicio: string | null;
   fecha_vencimiento: string | null;
   monto_prestamo: string | number;
@@ -49,13 +49,13 @@ export default function PrestamosAdminPage(): React.ReactElement {
 
   const [estado, setEstado] = React.useState(sp.get("estado") ?? "");
   const [sort, setSort] = React.useState<"asc" | "desc">(
-    sp.get("sort") === "asc" ? "asc" : "desc",
+    sp.get("sort") === "asc" ? "asc" : "desc"
   );
   const [limit, setLimit] = React.useState<number>(
-    Number(sp.get("limit") ?? 20) || 20,
+    Number(sp.get("limit") ?? 20) || 20
   );
   const [offset, setOffset] = React.useState<number>(
-    Number(sp.get("offset") ?? 0) || 0,
+    Number(sp.get("offset") ?? 0) || 0
   );
 
   const [data, setData] = React.useState<PrestamoResp | null>(null);
@@ -63,11 +63,7 @@ export default function PrestamosAdminPage(): React.ReactElement {
   const [err, setErr] = React.useState<string | null>(null);
 
   const query = React.useMemo(() => {
-    const q: Record<string, string> = {
-      limit: String(limit),
-      offset: String(offset),
-      sort,
-    };
+    const q: Record<string, string> = { limit: String(limit), offset: String(offset), sort };
     if (estado.trim()) q.estado = estado.trim();
     return q;
   }, [estado, limit, offset, sort]);
@@ -80,16 +76,14 @@ export default function PrestamosAdminPage(): React.ReactElement {
       const { data } = await api.get<PrestamoResp>(`/prestamos?${params}`);
       setData(data);
       router.replace(`/dashboard/prestamos?${params}`);
-    } catch (e: unknown) {
+    } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al cargar préstamos.");
     } finally {
       setLoading(false);
     }
   }, [query, router]);
 
-  React.useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  React.useEffect(() => { void fetchData(); }, [fetchData]);
 
   const total = data?.total ?? 0;
   const canPrev = offset > 0;
@@ -99,35 +93,21 @@ export default function PrestamosAdminPage(): React.ReactElement {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard"
-            className="rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
-          >
-            Inicio
-          </Link>
+          <Link href="/dashboard" className="rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5">Inicio</Link>
           <h1 className="text-xl font-semibold">Préstamos</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => void fetchData()}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5"
-          >
+          <button onClick={() => void fetchData()} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5">
             <RefreshCw className="size-4" /> Actualizar
           </button>
         </div>
       </div>
 
-      {err && (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {err}
-        </div>
-      )}
+      {err && <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{err}</div>}
 
       {/* Filtros simples */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm text-neutral-300">
-          <SlidersHorizontal className="size-4" /> Filtros
-        </div>
+        <div className="mb-3 flex items-center gap-2 text-sm text-neutral-300"><SlidersHorizontal className="size-4" /> Filtros</div>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="grid gap-1 text-sm">
             <span className="text-neutral-300">Estado</span>
@@ -150,11 +130,21 @@ export default function PrestamosAdminPage(): React.ReactElement {
             </select>
           </label>
           <div className="flex items-end gap-2">
+            <label className="grid gap-1 text-sm">
+              <span className="text-neutral-300">Límite</span>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={limit}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setLimit(Math.min(200, Math.max(1, Number(e.target.value) || 1)))
+                }
+                className="rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
+              />
+            </label>
             <button
-              onClick={() => {
-                setOffset(0);
-                void fetchData();
-              }}
+              onClick={() => { setOffset(0); void fetchData(); }}
               className="rounded-xl bg-blue-600 px-3 py-2 text-sm hover:bg-blue-500"
             >
               Aplicar
@@ -175,33 +165,21 @@ export default function PrestamosAdminPage(): React.ReactElement {
         </div>
 
         {loading ? (
-          <div className="grid place-items-center p-10 text-neutral-400">
-            <Loader2 className="mr-2 size-6 animate-spin" /> Cargando…
-          </div>
+          <div className="grid place-items-center p-10 text-neutral-400"><Loader2 className="mr-2 size-6 animate-spin" /> Cargando…</div>
         ) : (
           <div className="divide-y divide-white/10">
             {(data?.items ?? []).map((p) => {
               const name = estadoNombre(p.estado);
               return (
-                <div
-                  key={p.id_prestamo}
-                  className="grid grid-cols-12 items-center px-4 py-3 text-sm"
-                >
+                <div key={p.id_prestamo} className="grid grid-cols-12 items-center px-4 py-3 text-sm">
                   <div className="col-span-2 font-medium">
-                    <Link
-                      href={`/dashboard/prestamos/${p.id_prestamo}`}
-                      className="text-blue-400 underline hover:text-blue-300"
-                    >
+                    <Link href={`/dashboard/prestamos/${p.id_prestamo}`} className="text-blue-400 underline hover:text-blue-300">
                       #{p.id_prestamo}
                     </Link>
                   </div>
                   <div className="col-span-2">#{p.id_articulo}</div>
                   <div className="col-span-2">
-                    <span
-                      className={`rounded-md px-2 py-0.5 text-xs capitalize ${badgeEstado(
-                        name,
-                      )}`}
-                    >
+                    <span className={`rounded-md px-2 py-0.5 text-xs capitalize ${badgeEstado(name)}`}>
                       {name}
                     </span>
                   </div>
@@ -211,7 +189,7 @@ export default function PrestamosAdminPage(): React.ReactElement {
                   </div>
                   <div className="col-span-2">
                     <div>Q {Number(p.monto_prestamo ?? 0).toLocaleString()}</div>
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-neutral-400 text-xs">
                       Deuda: Q {Number(p.deuda_actual ?? 0).toLocaleString()}
                     </div>
                   </div>
@@ -222,33 +200,17 @@ export default function PrestamosAdminPage(): React.ReactElement {
                 </div>
               );
             })}
-            {(data?.items.length ?? 0) === 0 && (
-              <div className="p-6 text-center text-neutral-400">Sin resultados.</div>
-            )}
+            {(data?.items.length ?? 0) === 0 && <div className="p-6 text-center text-neutral-400">Sin resultados.</div>}
           </div>
         )}
       </div>
 
       {/* Paginación */}
       <div className="flex items-center justify-between">
-        <div className="text-sm text-neutral-400">
-          Total: {total} · Mostrando {data?.items.length ?? 0}
-        </div>
+        <div className="text-sm text-neutral-400">Total: {total} · Mostrando {data?.items.length ?? 0}</div>
         <div className="flex items-center gap-2">
-          <button
-            disabled={!canPrev}
-            onClick={() => setOffset(Math.max(0, offset - limit))}
-            className="rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
-          >
-            Anterior
-          </button>
-          <button
-            disabled={!canNext}
-            onClick={() => setOffset(offset + limit)}
-            className="rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
-          >
-            Siguiente
-          </button>
+          <button disabled={!canPrev} onClick={() => setOffset(Math.max(0, offset - limit))} className="rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50">Anterior</button>
+          <button disabled={!canNext} onClick={() => setOffset(offset + limit)} className="rounded-xl border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50">Siguiente</button>
         </div>
       </div>
     </div>

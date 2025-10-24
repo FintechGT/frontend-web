@@ -1,3 +1,4 @@
+// src/app/(app)/dashboard/mis-prestamos/page.tsx
 "use client";
 
 import * as React from "react";
@@ -19,8 +20,12 @@ export default function MisPrestamosPage(): React.ReactElement {
   const [sort, setSort] = React.useState<"asc" | "desc">(
     sp.get("sort") === "asc" ? "asc" : "desc"
   );
-  const [limit, setLimit] = React.useState<number>(Number(sp.get("limit") ?? 20) || 20);
-  const [offset, setOffset] = React.useState<number>(Number(sp.get("offset") ?? 0) || 0);
+  const [limit, setLimit] = React.useState<number>(
+    Number(sp.get("limit") ?? 20) || 20
+  );
+  const [offset, setOffset] = React.useState<number>(
+    Number(sp.get("offset") ?? 0) || 0
+  );
 
   // Datos
   const [data, setData] = React.useState<MisPrestamosResp | null>(null);
@@ -46,9 +51,11 @@ export default function MisPrestamosPage(): React.ReactElement {
         offset,
         estado: estado.trim() || undefined,
         sort,
-      } as any);
+      });
       setData(res);
-      router.replace(`/dashboard/mis-prestamos?${new URLSearchParams(query).toString()}`);
+      router.replace(
+        `/dashboard/mis-prestamos?${new URLSearchParams(query).toString()}`
+      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error al cargar préstamos.");
     } finally {
@@ -80,7 +87,9 @@ export default function MisPrestamosPage(): React.ReactElement {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <label className="grid gap-1 text-sm sm:col-span-3">
-            <span className="text-neutral-300">Estado (ej: activo, en_mora_parcial)</span>
+            <span className="text-neutral-300">
+              Estado (ej: activo, en_mora_parcial)
+            </span>
             <input
               value={estado}
               onChange={(e) => setEstado(e.target.value)}
@@ -108,7 +117,11 @@ export default function MisPrestamosPage(): React.ReactElement {
               min={1}
               max={200}
               value={limit}
-              onChange={(e) => setLimit(Math.min(200, Math.max(1, Number(e.target.value) || 1)))}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setLimit(
+                  Math.min(200, Math.max(1, Number(e.target.value) || 1))
+                )
+              }
               className="rounded-xl border border-white/10 bg-neutral-900 px-3 py-2 outline-none focus:border-blue-500"
             />
           </label>
@@ -139,6 +152,13 @@ export default function MisPrestamosPage(): React.ReactElement {
         </div>
       </div>
 
+      {/* Mostrar error si existe */}
+      {err && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+          {err}
+        </div>
+      )}
+
       {/* Tabla */}
       <div className="overflow-hidden rounded-2xl border border-white/10">
         <div className="grid grid-cols-12 bg-white/5 px-4 py-2 text-xs uppercase tracking-wide text-neutral-400">
@@ -155,7 +175,10 @@ export default function MisPrestamosPage(): React.ReactElement {
         ) : (
           <div className="divide-y divide-white/10">
             {(data?.items ?? []).map((p: MiPrestamoItem) => (
-              <div key={p.id_prestamo} className="grid grid-cols-12 items-center px-4 py-3 text-sm">
+              <div
+                key={p.id_prestamo}
+                className="grid grid-cols-12 items-center px-4 py-3 text-sm"
+              >
                 <div className="col-span-3">
                   <Link
                     href={`/dashboard/prestamos/${p.id_prestamo}`}
@@ -163,11 +186,13 @@ export default function MisPrestamosPage(): React.ReactElement {
                   >
                     #{p.id_prestamo}
                   </Link>
-                  <div className="text-xs text-neutral-400">Artículo #{p.id_articulo}</div>
+                  <div className="text-xs text-neutral-400">
+                    Artículo #{p.id_articulo}
+                  </div>
                 </div>
                 <div className="col-span-3">
                   <span className="rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs capitalize text-blue-300">
-              
+                    {typeof p.estado === "string" ? p.estado : p.estado?.nombre}
                   </span>
                 </div>
                 <div className="col-span-3 text-xs font-mono">
