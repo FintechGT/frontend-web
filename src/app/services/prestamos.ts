@@ -148,14 +148,13 @@ export async function listarMisPrestamos(params?: {
 }
 
 /**
- * Obtener detalle completo de un préstamo para la vista /prestamos/[id].
- * El backend puede exponer /prestamos/:id/detalle o /prestamos/:id.
- * Intentamos primero /detalle y, si 404, probamos la ruta simple.
+ * Obtener detalle COMPLETO de un préstamo para /prestamos/[id].
+ * Ruta oficial del backend: GET /prestamos/:id/detalle-completo
+ * Fallback opcional: /prestamos/:id/detalle
  */
 export async function obtenerPrestamoDetalleCompleto(
   id_prestamo: number
 ): Promise<PrestamoDetalleCompleto> {
-  // helper local para probar una URL
   const tryFetch = async (url: string): Promise<PrestamoDetalleCompleto> => {
     const res = await fetch(url, {
       headers: { ...authHeaders() },
@@ -164,11 +163,19 @@ export async function obtenerPrestamoDetalleCompleto(
     return parseJson<PrestamoDetalleCompleto>(res);
   };
 
-  // 1) /detalle
+  // 1) Ruta oficial
   try {
-    return await tryFetch(`${API_BASE}/prestamos/${id_prestamo}/detalle`);
-  } catch (e) {
-    // si no existe esa ruta, reintenta en /prestamos/:id
-    return await tryFetch(`${API_BASE}/prestamos/${id_prestamo}`);
+    return await tryFetch(`${API_BASE}/prestamos/${id_prestamo}/detalle-completo`);
+  } catch (e1) {
+    // 2) Compatibilidad: /detalle (si existiera en algún entorno)
+    try {
+      return await tryFetch(`${API_BASE}/prestamos/${id_prestamo}/detalle`);
+    } catch (e2) {
+      const msg =
+        e1 instanceof Error ? e1.message :
+        e2 instanceof Error ? e2.message :
+        "No se pudo obtener el detalle del préstamo.";
+      throw new Error(`Detalle no disponible. Probé /detalle-completo y /detalle. ${msg}`);
+    }
   }
 }
