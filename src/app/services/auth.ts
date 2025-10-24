@@ -35,11 +35,12 @@ export type Me = {
 // Alias por si en algún sitio importas `User`
 export type User = Me;
 
-/** ====== Config ====== */
-const API_URL =
+/* =========================
+   Config / helpers
+========================= */
+const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
-/** ====== Utils ====== */
 async function parseResponse<T>(res: Response): Promise<T> {
   const text = await res.text();
   let data: unknown;
@@ -52,7 +53,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
     const msg =
       (data as { detail?: string })?.detail ??
       (data as { message?: string })?.message ??
-      `Error ${res.status}`;
+      `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data as T;
@@ -77,9 +78,12 @@ function mapMe(raw: unknown): Me {
   };
 }
 
-/** ====== Auth API ====== */
+/* =========================
+   Auth API
+========================= */
+
 export async function registerUser(body: RegisterInput): Promise<UserResponse> {
-  const res = await fetch(`${API_URL}/auth/register`, {
+  const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -88,7 +92,7 @@ export async function registerUser(body: RegisterInput): Promise<UserResponse> {
 }
 
 export async function loginUser(body: LoginInput): Promise<TokenResponse> {
-  const res = await fetch(`${API_URL}/auth/login`, {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -97,7 +101,7 @@ export async function loginUser(body: LoginInput): Promise<TokenResponse> {
 }
 
 export async function loginWithGoogle(id_token: string): Promise<TokenResponse> {
-  const res = await fetch(`${API_URL}/auth/google`, {
+  const res = await fetch(`${API_BASE}/auth/google`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id_token }),
@@ -105,7 +109,9 @@ export async function loginWithGoogle(id_token: string): Promise<TokenResponse> 
   return parseResponse<TokenResponse>(res);
 }
 
-/** ====== Helpers de token (cliente) ====== */
+/* =========================
+   Token helpers (cliente)
+========================= */
 export function getTokenFromClient(): string | null {
   if (typeof window === "undefined") return null;
   const fromLs = window.localStorage.getItem("access_token");
@@ -117,7 +123,7 @@ export function getTokenFromClient(): string | null {
 export function saveToken(token: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("access_token", token);
-  // cookie opcional (1 día) — útil si más adelante haces SSR
+  // cookie opcional (1 día)
   document.cookie = `access_token=${encodeURIComponent(
     token
   )}; Path=/; Max-Age=86400; SameSite=Lax`;
@@ -126,11 +132,12 @@ export function saveToken(token: string): void {
 export function clearToken(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem("access_token");
-  document.cookie =
-    "access_token=; Path=/; Max-Age=0; SameSite=Lax";
+  document.cookie = "access_token=; Path=/; Max-Age=0; SameSite=Lax";
 }
 
-/** ====== Perfil ====== */
+/* =========================
+   Perfil
+========================= */
 export async function getMe(token?: string): Promise<Me> {
   let t = token;
   if (!t) {
@@ -141,7 +148,7 @@ export async function getMe(token?: string): Promise<Me> {
     if (!t) throw new Error("No hay token de sesión");
   }
 
-  const res = await fetch(`${API_URL}/auth/me`, {
+  const res = await fetch(`${API_BASE}/auth/me`, {
     method: "GET",
     headers: { Authorization: `Bearer ${t}` },
     cache: "no-store",

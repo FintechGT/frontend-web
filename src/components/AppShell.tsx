@@ -20,7 +20,7 @@ import {
 import UserMenu from "@/components/ui/UserMenu";
 import { useAuth } from "@/app/AppLayoutClient";
 
-// ---------- Tipos ----------
+/* ---------- Tipos ---------- */
 type Category = "general" | "admin" | "config";
 
 type LinkItem = Readonly<{
@@ -31,6 +31,7 @@ type LinkItem = Readonly<{
   categoria: Category;
 }>;
 
+/* ---------- Componente ---------- */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
   const pathname = usePathname();
@@ -38,8 +39,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { can } = useAuth(); // (permiso: string) => boolean
   const [ready, setReady] = React.useState(false);
 
+  // Gate de sesión (simple)
   React.useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     if (!token) {
       router.replace("/login");
       return;
@@ -55,43 +58,50 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // ---------- Menú ----------
+  /* ---------- Menú ---------- */
   const allLinks: ReadonlyArray<LinkItem> = [
-    // General
-    { href: "/dashboard", label: "Inicio", icon: <Home className="h-4 w-4" />, permiso: null, categoria: "general" },
-    { href: "/dashboard/solicitudes", label: "Solicitudes", icon: <FileText className="h-4 w-4" />, permiso: "solicitudes.view", categoria: "general" },
-    { href: "/dashboard/pagos", label: "Pagos", icon: <CreditCard className="h-4 w-4" />, permiso: "pagos.view", categoria: "general" },
-    { href: "/dashboard/contratos", label: "Contratos", icon: <FileText className="h-4 w-4" />, permiso: null, categoria: "general" },
+    // ===== General (visibles para cualquiera autenticado) =====
+    { href: "/dashboard",             label: "Inicio",        icon: <Home className="h-4 w-4" />,        permiso: null,                 categoria: "general" },
+    { href: "/dashboard/solicitudes", label: "Solicitudes",   icon: <FileText className="h-4 w-4" />,    permiso: "solicitudes.view",   categoria: "general" },
+    { href: "/dashboard/mis-prestamos", label: "Mis préstamos", icon: <TrendingUp className="h-4 w-4" />, permiso: null,                 categoria: "general" },
+    { href: "/dashboard/mis-pagos",     label: "Mis pagos",     icon: <CreditCard className="h-4 w-4" />, permiso: null,                 categoria: "general" },
+    // Puede ser pública o con permiso, según tu preferencia:
+    { href: "/dashboard/contratos",   label: "Contratos",     icon: <FileText className="h-4 w-4" />,    permiso: null,                 categoria: "general" },
 
-    // Administración
-    { href: "/dashboard/usuarios", label: "Usuarios", icon: <Users className="h-4 w-4" />, permiso: "usuarios.view", categoria: "admin" },
-    { href: "/dashboard/inventario", label: "Inventario", icon: <Package className="h-4 w-4" />, permiso: "inventario.view", categoria: "admin" },
-    { href: "/dashboard/prestamos", label: "Préstamos", icon: <TrendingUp className="h-4 w-4" />, permiso: "prestamos.view", categoria: "admin" },
-    { href: "/dashboard/reportes", label: "Reportes", icon: <BarChart3 className="h-4 w-4" />, permiso: "reportes.view", categoria: "admin" },
+    // ===== Administración (solo si can(...) devuelve true) =====
+    { href: "/dashboard/usuarios",    label: "Usuarios",      icon: <Users className="h-4 w-4" />,       permiso: "usuarios.view",      categoria: "admin" },
+    { href: "/dashboard/inventario",  label: "Inventario",    icon: <Package className="h-4 w-4" />,     permiso: "inventario.view",    categoria: "admin" },
+    { href: "/dashboard/prestamos",   label: "Préstamos",     icon: <TrendingUp className="h-4 w-4" />,  permiso: "prestamos.view",     categoria: "admin" },
+    { href: "/dashboard/pagos",       label: "Pagos",         icon: <CreditCard className="h-4 w-4" />,  permiso: "pagos.view",         categoria: "admin" },
+    { href: "/dashboard/reportes",    label: "Reportes",      icon: <BarChart3 className="h-4 w-4" />,   permiso: "reportes.view",      categoria: "admin" },
 
-    // Sistema / Config
-    { href: "/dashboard/seguridad", label: "Seguridad", icon: <Shield className="h-4 w-4" />, permiso: "seguridad.view", categoria: "config" },
-    { href: "/dashboard/auditoria", label: "Auditoría", icon: <Clock className="h-4 w-4" />, permiso: "auditoria.view", categoria: "config" },
-    { href: "/dashboard/configuracion", label: "Configuración", icon: <Settings className="h-4 w-4" />, permiso: null, categoria: "config" },
+    // ===== Sistema / Config =====
+    { href: "/dashboard/seguridad",   label: "Seguridad",     icon: <Shield className="h-4 w-4" />,      permiso: "seguridad.view",     categoria: "config" },
+    { href: "/dashboard/auditoria",   label: "Auditoría",     icon: <Clock className="h-4 w-4" />,       permiso: "auditoria.view",     categoria: "config" },
+    { href: "/dashboard/configuracion", label: "Configuración", icon: <Settings className="h-4 w-4" />,  permiso: null,                 categoria: "config" },
   ] as const;
 
+  // Filtra por permisos (los null pasan siempre)
   const links: LinkItem[] = allLinks.filter((l) => !l.permiso || can(l.permiso));
 
   const linksPorCategoria: Record<Category, LinkItem[]> = {
     general: links.filter((l) => l.categoria === "general"),
-    admin: links.filter((l) => l.categoria === "admin"),
-    config: links.filter((l) => l.categoria === "config"),
+    admin:   links.filter((l) => l.categoria === "admin"),
+    config:  links.filter((l) => l.categoria === "config"),
   };
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
   const currentLabel = links.find((l) => isActive(l.href))?.label ?? "Panel";
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
       {/* Topbar */}
-      <header className="fixed top-0 inset-x-0 z-50 h-14 border-b border-white/10 bg-neutral-950/70 backdrop-blur">
+      <header className="fixed inset-x-0 top-0 z-50 h-14 border-b border-white/10 bg-neutral-950/70 backdrop-blur">
         <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
+            {/* Burger móvil */}
             <button
               className="inline-flex items-center justify-center rounded-lg border border-white/10 p-2 hover:bg-white/5 lg:hidden"
               onClick={() => setOpen(true)}
@@ -102,24 +112,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/dashboard" className="font-semibold">
               Empeños<span className="text-blue-400">GT</span>
             </Link>
-            <span className="ml-3 hidden text-sm text-neutral-400 sm:inline">{currentLabel}</span>
+            <span className="ml-3 hidden text-sm text-neutral-400 sm:inline">
+              {currentLabel}
+            </span>
           </div>
           <UserMenu />
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl grid-cols-1 lg:grid-cols-[240px_1fr] gap-0 px-4 pt-16">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-0 px-4 pt-16 lg:grid-cols-[240px_1fr]">
         {/* Sidebar desktop */}
         <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] overflow-y-auto lg:block">
           <nav className="space-y-6 py-4">
             {linksPorCategoria.general.length > 0 && (
-              <Section title="General" items={linksPorCategoria.general} isActive={isActive} />
+              <Section
+                title="General"
+                items={linksPorCategoria.general}
+                isActive={isActive}
+              />
             )}
             {linksPorCategoria.admin.length > 0 && (
-              <Section title="Administración" items={linksPorCategoria.admin} isActive={isActive} />
+              <Section
+                title="Administración"
+                items={linksPorCategoria.admin}
+                isActive={isActive}
+              />
             )}
             {linksPorCategoria.config.length > 0 && (
-              <Section title="Sistema" items={linksPorCategoria.config} isActive={isActive} />
+              <Section
+                title="Sistema"
+                items={linksPorCategoria.config}
+                isActive={isActive}
+              />
             )}
           </nav>
         </aside>
@@ -130,7 +154,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Drawer móvil */}
       {open && (
-        <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          onClick={() => setOpen(false)}
+        >
           <div className="absolute inset-0 bg-black/50" />
           <div
             className="absolute left-0 top-0 h-full w-72 overflow-y-auto border-r border-white/10 bg-neutral-950 p-4"
@@ -154,7 +181,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 linksPorCategoria[cat].length ? (
                   <div key={cat}>
                     <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                      {cat === "general" ? "General" : cat === "admin" ? "Administración" : "Sistema"}
+                      {cat === "general"
+                        ? "General"
+                        : cat === "admin"
+                        ? "Administración"
+                        : "Sistema"}
                     </div>
                     <div className="space-y-1">
                       {linksPorCategoria[cat].map((item) => {
@@ -165,7 +196,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                             href={item.href}
                             onClick={() => setOpen(false)}
                             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-                              active ? "bg-white/10 text-white" : "text-neutral-300 hover:bg-white/5"
+                              active
+                                ? "bg-white/10 text-white"
+                                : "text-neutral-300 hover:bg-white/5"
                             }`}
                           >
                             {item.icon}
@@ -185,6 +218,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* ---------- Sección del sidebar ---------- */
 function Section({
   title,
   items,
@@ -196,7 +230,9 @@ function Section({
 }) {
   return (
     <div>
-      <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">{title}</div>
+      <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+        {title}
+      </div>
       <div className="space-y-1">
         {items.map((item) => {
           const active = isActive(item.href);
