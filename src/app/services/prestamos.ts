@@ -1,6 +1,9 @@
 // src/app/services/prestamos.ts
 import { getTokenFromClient } from "./auth";
 
+/* =========================
+   Config / helpers
+========================= */
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
@@ -19,12 +22,8 @@ async function parseJson<T>(res: Response): Promise<T> {
   }
   if (!res.ok) {
     const msg =
-      (typeof data === "object" && data && "detail" in (data as Record<string, unknown>) && typeof (data as { detail?: unknown }).detail === "string"
-        ? (data as { detail: string }).detail
-        : undefined) ||
-      (typeof data === "object" && data && "message" in (data as Record<string, unknown>) && typeof (data as { message?: unknown }).message === "string"
-        ? (data as { message: string }).message
-        : undefined) ||
+      (data as { detail?: string; message?: string } | undefined)?.detail ||
+      (data as { message?: string } | undefined)?.message ||
       `HTTP ${res.status}`;
     throw new Error(msg);
   }
@@ -39,10 +38,27 @@ function toSearchParams(obj: Record<string, string | number | undefined | null>)
   return q.toString();
 }
 
+/* =========================
+   Tipos compartidos
+========================= */
+
+// Re-export para que puedas importar desde este módulo tal como hace la página [id]/page.tsx
+export type { PagoItem } from "./pagos";
+
+export type MovimientoItem = {
+  id_mov: number;
+  fecha: string;          // ISO o YYYY-MM-DD
+  tipo: string;           // ej: "abono", "interes", "mora", etc.
+  monto: number;
+  nota?: string | null;
+};
+
+export type EstadoPrestamo = { id: number; nombre: string };
+
 export type MiPrestamoItem = {
   id_prestamo: number;
   id_articulo: number;
-  estado: { id: number; nombre: string } | string | null;
+  estado: EstadoPrestamo | string | null;
   fecha_inicio: string | null;
   fecha_vencimiento: string | null;
   monto_prestamo: number | string | null;
@@ -58,20 +74,70 @@ export type MisPrestamosResp = {
   offset?: number;
 };
 
-export type MisPrestamosQuery = Partial<{
-  estado: string;
-  sort: "asc" | "desc";
-  limit: number;
-  offset: number;
-}>;
+export type ArticuloDetalle = {
+  id_articulo: number;
+  id_tipo: number;
+  tipo_nombre?: string | null;
+  descripcion?: string | null;
+  estado?: string | null;
+  valor_estimado?: number | string | null;
+  valor_aprobado?: number | string | null;
+  fotos?: string[]; // URLs
+};
 
-/** Mis préstamos (usuario autenticado) */
-export async function listarMisPrestamos(q: MisPrestamosQuery): Promise<MisPrestamosResp> {
+export type ClienteMin = {
+  id: number;
+  nombre: string;
+  correo?: string | null;
+  telefono?: string | null;
+};
+
+export type ContratoMin = {
+  id_contrato: number;
+  url_pdf: string;
+};
+
+export type PrestamoDetalleCompleto = {
+  id_prestamo: number;
+  estado: EstadoPrestamo;
+  fecha_inicio: string;
+  fecha_vencimiento: string;
+  dias_mora: number;
+
+  monto_prestamo: number;
+  deuda_actual: number;
+  interes_acumulada: number;
+  mora_acumulada: number;
+
+  total_pagado: number;
+
+  articulo: ArticuloDetalle;
+  cliente?: ClienteMin | null;
+  contrato?: ContratoMin | null;
+
+  pagos: import("./pagos").PagoItem[];
+  movimientos?: MovimientoItem[];
+
+  puede_pagar?: boolean;
+  puede_liquidar?: boolean;
+};
+
+/* =========================
+   Endpoints
+========================= */
+
+/** Listar MIS préstamos (para vistas del cliente) */
+export async function listarMisPrestamos(params?: {
+  limit?: number;
+  offset?: number;
+  estado?: string;
+  sort?: "asc" | "desc";
+}): Promise<MisPrestamosResp> {
   const qstr = toSearchParams({
-    estado: q.estado,
-    sort: q.sort ?? "desc",
-    limit: q.limit ?? 20,
-    offset: q.offset ?? 0,
+    limit: params?.limit ?? 20,
+    offset: params?.offset ?? 0,
+    estado: params?.estado,
+    sort: params?.sort ?? "desc",
   });
 
   const res = await fetch(`${API_BASE}/prestamos/mis?${qstr}`, {
@@ -79,4 +145,30 @@ export async function listarMisPrestamos(q: MisPrestamosQuery): Promise<MisPrest
     cache: "no-store",
   });
   return parseJson<MisPrestamosResp>(res);
+}
+
+/**
+ * Obtener detalle completo de un préstamo para la vista /prestamos/[id].
+ * El backend puede exponer /prestamos/:id/detalle o /prestamos/:id.
+ * Intentamos primero /detalle y, si 404, probamos la ruta simple.
+ */
+export async function obtenerPrestamoDetalleCompleto(
+  id_prestamo: number
+): Promise<PrestamoDetalleCompleto> {
+  // helper local para probar una URL
+  const tryFetch = async (url: string): Promise<PrestamoDetalleCompleto> => {
+    const res = await fetch(url, {
+      headers: { ...authHeaders() },
+      cache: "no-store",
+    });
+    return parseJson<PrestamoDetalleCompleto>(res);
+  };
+
+  // 1) /detalle
+  try {
+    return await tryFetch(`${API_BASE}/prestamos/${id_prestamo}/detalle`);
+  } catch (e) {
+    // si no existe esa ruta, reintenta en /prestamos/:id
+    return await tryFetch(`${API_BASE}/prestamos/${id_prestamo}`);
+  }
 }
