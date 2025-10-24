@@ -12,6 +12,19 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+/** Intenta extraer un mensaje de error legible desde payloads desconocidos */
+function extractApiMessage(data: unknown): string | undefined {
+  if (typeof data === "string") return data;
+  if (data && typeof data === "object") {
+    const rec = data as Record<string, unknown>;
+    const detail = rec.detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    const message = rec.message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return undefined;
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const txt = await res.text();
   let data: unknown;
@@ -21,14 +34,15 @@ async function parseJson<T>(res: Response): Promise<T> {
     data = txt;
   }
   if (!res.ok) {
-    const msg =
-      (data as any)?.detail || (data as any)?.message || `HTTP ${res.status}`;
+    const msg = extractApiMessage(data) ?? `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return data as T;
 }
 
-function toSearchParams(obj: Record<string, string | number | undefined | null>): string {
+function toSearchParams(
+  obj: Record<string, string | number | undefined | null>
+): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(obj)) {
     if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
@@ -77,8 +91,8 @@ export type PagosQuery = Partial<{
   medio_pago: string;
   tipo_pago: string;
   ref_contains: string;
-  fecha_desde: string;  // YYYY-MM-DD
-  fecha_hasta: string;  // YYYY-MM-DD
+  fecha_desde: string; // YYYY-MM-DD
+  fecha_hasta: string; // YYYY-MM-DD
   sort: "asc" | "desc";
   limit: number;
   offset: number;
@@ -160,15 +174,24 @@ export const listarPagosDePrestamo = (
   params?: { limit?: number; offset?: number }
 ) => listarPagos(id_prestamo, params);
 
+/** Respuesta mínima esperada al validar un pago (flexible) */
+export type ValidarPagoResponse = {
+  ok?: boolean;
+  id_pago?: number;
+  estado?: string;
+  // permitir campos adicionales del backend sin usar `any`
+  [key: string]: unknown;
+};
+
 /** Validar pago pendiente (admin/cajero/supervisor) */
-export async function validarPago(
+export async function validarPago<T = ValidarPagoResponse>(
   id_pago: number,
   nota?: string
-): Promise<any> {
+): Promise<T> {
   const res = await fetch(`${API_BASE}/pagos/${id_pago}/validar`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ nota: nota ?? "Validado desde panel" }),
   });
-  return parseJson<any>(res);
+  return parseJson<T>(res);
 }

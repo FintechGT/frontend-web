@@ -167,7 +167,7 @@ export default function MisPrestamosPage(): React.ReactElement {
                 </div>
                 <div className="col-span-3">
                   <span className="rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs capitalize text-blue-300">
-                    {p.estado?.nombre ?? "—"}
+              
                   </span>
                 </div>
                 <div className="col-span-3 text-xs font-mono">

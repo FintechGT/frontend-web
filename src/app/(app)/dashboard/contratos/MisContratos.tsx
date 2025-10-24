@@ -3,8 +3,27 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { misContratos, type ContratoBase, urlVerContrato, urlAbrirContrato } from "@/app/services/contratos";
-import { FileText, Download, CheckCircle2, Clock, AlertCircle, Loader2, Eye } from "lucide-react";
+import {
+  misContratos,
+  type ContratoBase,
+  urlVerContrato,
+  urlAbrirContrato,
+} from "@/app/services/contratos";
+import {
+  FileText,
+  Download,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Loader2,
+  Eye,
+} from "lucide-react";
+
+function human(error: unknown) {
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  return "Error al cargar mis contratos";
+}
 
 export default function MisContratos() {
   const [rows, setRows] = React.useState<ContratoBase[]>([]);
@@ -20,9 +39,9 @@ export default function MisContratos() {
         const data = await misContratos();
         if (!alive) return;
         setRows(data);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!alive) return;
-        setError(e?.message ?? "Error al cargar mis contratos");
+        setError(human(e));
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -57,14 +76,18 @@ export default function MisContratos() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Mis Contratos</h1>
-        <p className="text-sm text-neutral-400">Contratos de préstamos generados para ti</p>
+        <p className="text-sm text-neutral-400">
+          Contratos de préstamos generados para ti
+        </p>
       </div>
 
       {rows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/10 p-12 text-center">
           <FileText className="mx-auto size-12 text-neutral-600" />
           <h3 className="mt-4 font-medium text-neutral-300">No tienes contratos</h3>
-          <p className="mt-1 text-sm text-neutral-400">Aparecerán cuando un préstamo sea aprobado.</p>
+          <p className="mt-1 text-sm text-neutral-400">
+            Aparecerán cuando un préstamo sea aprobado.
+          </p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -75,7 +98,10 @@ export default function MisContratos() {
             const parcial = !completo && (firmaCliente || firmaEmpresa);
 
             return (
-              <div key={c.id_contrato} className="rounded-2xl border border-white/10 bg-white/5 p-5 hover:bg-white/10">
+              <div
+                key={c.id_contrato}
+                className="rounded-2xl border border-white/10 bg-white/5 p-5 hover:bg-white/10"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="flex items-start gap-4">
                     <div className="grid size-12 place-items-center rounded-lg bg-blue-500/20">
@@ -93,7 +119,11 @@ export default function MisContratos() {
                               : "bg-neutral-500/15 text-neutral-400"
                           }`}
                         >
-                          {completo ? <CheckCircle2 className="size-3.5" /> : <Clock className="size-3.5" />}
+                          {completo ? (
+                            <CheckCircle2 className="size-3.5" />
+                          ) : (
+                            <Clock className="size-3.5" />
+                          )}
                           {completo ? "Completado" : parcial ? "Parcial" : "Pendiente"}
                         </span>
                       </div>

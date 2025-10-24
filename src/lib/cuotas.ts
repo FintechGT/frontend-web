@@ -13,18 +13,34 @@ const TASA_INTERES_DIARIO = 0.0005; // 0.05% diario
 const TASA_MORA_DIARIA    = 0.0010; // 0.10% diario
 const GRACIA_DIAS         = 3;      // días de gracia
 
+const MS_PER_DAY = 24 * 3600 * 1000;
+
 function parseDate(d: string): Date {
-  // Acepta "YYYY-MM-DD" o ISO; asegura que no haya TZ-shift
-  const [y,m,day] = d.slice(0,10).split("-").map(Number);
-  return new Date(y, (m ?? 1) - 1, day ?? 1);
+  // Acepta "YYYY-MM-DD" o ISO; evita TZ shift tomando solo la parte de fecha
+  const y = Number(d.slice(0, 4));
+  const m = Number(d.slice(5, 7));
+  const day = Number(d.slice(8, 10));
+  if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(day)) {
+    return new Date(y, (m || 1) - 1, day || 1);
+  }
+  // Fallback a constructor estándar (por si viene ISO completo)
+  const dt = new Date(d);
+  // Normalizar a fecha (sin hora) para cálculos por día
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
 }
-function daysBetween(a: Date, b: Date) {
-  const ms = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) -
-             Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
-  return Math.round(ms / (24 * 3600 * 1000));
+
+function daysBetween(a: Date, b: Date): number {
+  const ms =
+    Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) -
+    Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  // floor para evitar redondeos sorpresivos
+  return Math.floor(ms / MS_PER_DAY);
 }
-function monthsBetween(a: Date, b: Date) {
-  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + (b.getDate() > a.getDate() ? 1 : 0);
+
+function monthsBetween(a: Date, b: Date): number {
+  const base = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  // si el día de b es mayor que el de a, contamos un mes adicional (aprox francés)
+  return base + (b.getDate() > a.getDate() ? 1 : 0);
 }
 
 export type CalculoCuota = {
@@ -42,7 +58,10 @@ export type CalculoCuota = {
   };
 };
 
-export function calcularCuotaCliente(p: PrestamoLike, hoy = new Date()): CalculoCuota {
+export function calcularCuotaCliente(
+  p: PrestamoLike,
+  _hoy: Date = new Date() // subrayado para evitar warning por no uso
+): CalculoCuota {
   const monto = Number(p.monto_prestamo ?? 0);
   const fi = parseDate(p.fecha_inicio);
   const fv = parseDate(p.fecha_vencimiento);
@@ -55,7 +74,7 @@ export function calcularCuotaCliente(p: PrestamoLike, hoy = new Date()): Calculo
     const interes = monto * TASA_INTERES_DIARIO * diasPrestamo;
     const cuotaProm = (monto + interes) / diasPrestamo;
 
-    // Mora estimada solo como referencia (gracia)
+    // Mora estimada como referencia (solo por días de gracia)
     const moraEstim = monto * TASA_MORA_DIARIA * Math.max(0, GRACIA_DIAS);
 
     return {
@@ -92,4 +111,6 @@ export function calcularCuotaCliente(p: PrestamoLike, hoy = new Date()): Calculo
   }
 }
 
-function round2(x: number) { return Math.round((x + Number.EPSILON) * 100) / 100; }
+function round2(x: number): number {
+  return Math.round((x + Number.EPSILON) * 100) / 100;
+}

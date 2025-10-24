@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   listarContratos,
   EstadoFirma,
-  ContratoAdminRow,
   ContratoListResponse,
   urlVerContrato,
   urlAbrirContrato,
@@ -63,6 +62,10 @@ export default function AdminContratos() {
   const canPrev = offset > 0;
   const canNext = data ? offset + limit < data.total : false;
 
+  const handleEstadoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setEstado(e.target.value as EstadoFirma | "todos");
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex items-center justify-between">
@@ -92,7 +95,7 @@ export default function AdminContratos() {
           <select
             className="rounded-lg border border-white/10 bg-transparent px-2 py-2 text-sm"
             value={estado}
-            onChange={(e) => setEstado(e.target.value as any)}
+            onChange={handleEstadoChange}
           >
             <option value="todos">Estado: todos</option>
             <option value="pendiente">Pendiente</option>
