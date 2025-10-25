@@ -1,4 +1,4 @@
-// src/app/services/auth.ts
+import api from "@/lib/api";
 
 /** ====== Tipos ====== */
 export type RegisterInput = {
@@ -32,39 +32,13 @@ export type Me = {
   estadoActivo?: boolean;
 };
 
-// Alias por si en algún sitio importas `User`
+// Alias
 export type User = Me;
-
-/* =========================
-   Config / helpers
-========================= */
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
-
-async function parseResponse<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  let data: unknown;
-  try {
-    data = text ? JSON.parse(text) : undefined;
-  } catch {
-    data = text;
-  }
-  if (!res.ok) {
-    const msg =
-      (data as { detail?: string })?.detail ??
-      (data as { message?: string })?.message ??
-      `HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-  return data as T;
-}
 
 function mapMe(raw: unknown): Me {
   const o = (raw ?? {}) as Record<string, unknown>;
   return {
-    idUsuario: Number(
-      o.ID_Usuario ?? o.idUsuario ?? o.id_usuario ?? o.id ?? 0
-    ),
+    idUsuario: Number(o.ID_Usuario ?? o.idUsuario ?? o.id_usuario ?? o.id ?? 0),
     nombre: String(o.Nombre ?? o.nombre ?? ""),
     correo: String(o.Correo ?? o.correo ?? ""),
     verificado:
@@ -79,34 +53,23 @@ function mapMe(raw: unknown): Me {
 }
 
 /* =========================
-   Auth API
+   Auth API (axios)
 ========================= */
 
 export async function registerUser(body: RegisterInput): Promise<UserResponse> {
-  const res = await fetch(`${API_BASE}/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return parseResponse<UserResponse>(res);
+  const r = await api.post<UserResponse>("/auth/register", body);
+  return r.data;
 }
 
 export async function loginUser(body: LoginInput): Promise<TokenResponse> {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return parseResponse<TokenResponse>(res);
+  const r = await api.post<TokenResponse>("/auth/login", body);
+  return r.data;
 }
 
 export async function loginWithGoogle(id_token: string): Promise<TokenResponse> {
-  const res = await fetch(`${API_BASE}/auth/google`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id_token }),
-  });
-  return parseResponse<TokenResponse>(res);
+  // Si tu backend espera { id_token } por POST:
+  const r = await api.post<TokenResponse>("/auth/google", { id_token });
+  return r.data;
 }
 
 /* =========================
@@ -123,7 +86,6 @@ export function getTokenFromClient(): string | null {
 export function saveToken(token: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("access_token", token);
-  // cookie opcional (1 día)
   document.cookie = `access_token=${encodeURIComponent(
     token
   )}; Path=/; Max-Age=86400; SameSite=Lax`;
@@ -139,22 +101,15 @@ export function clearToken(): void {
    Perfil
 ========================= */
 export async function getMe(token?: string): Promise<Me> {
-  let t = token;
-  if (!t) {
-    if (typeof window === "undefined") {
-      throw new Error("No hay token de sesión");
-    }
-    t = getTokenFromClient() ?? undefined;
-    if (!t) throw new Error("No hay token de sesión");
+  if (!token && typeof window !== "undefined") {
+    token = getTokenFromClient() ?? undefined;
   }
+  if (!token) throw new Error("No hay token de sesión");
 
-  const res = await fetch(`${API_BASE}/auth/me`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${t}` },
-    cache: "no-store",
+  const r = await api.get("/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
   });
-  const raw = await parseResponse<unknown>(res);
-  return mapMe(raw);
+  return mapMe(r.data);
 }
 
 export async function getMeFromClient(): Promise<Me> {

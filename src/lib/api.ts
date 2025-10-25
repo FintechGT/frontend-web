@@ -1,4 +1,3 @@
-// src/lib/api.ts
 import axios, {
   type AxiosError,
   AxiosHeaders,
@@ -6,7 +5,7 @@ import axios, {
 } from "axios";
 
 /**
- * Resolución del baseURL:
+ * Resolución de baseURL:
  * - Si NEXT_PUBLIC_USE_PROXY === "1" -> usamos /api/proxy (Next route handler).
  * - Si no, usamos NEXT_PUBLIC_API_URL (o fallback http://127.0.0.1:8000).
  */
@@ -30,6 +29,7 @@ const api = axios.create({
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
+
 function extractMessage(data: unknown): string | undefined {
   if (typeof data === "string" && data) return data;
   if (!isRecord(data)) return undefined;
@@ -47,11 +47,7 @@ function extractMessage(data: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Interceptor de REQUEST:
- * - Inyecta Authorization: Bearer <token> desde localStorage si existe.
- * Importante: usar AxiosHeaders para evitar TS2322 al reasignar headers.
- */
+/** Interceptor de REQUEST: agrega Authorization si hay token en LS. */
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (typeof window !== "undefined") {
@@ -60,7 +56,6 @@ api.interceptors.request.use(
         window.localStorage.getItem("token");
 
       if (token) {
-        // Asegura que config.headers sea AxiosHeaders
         if (!config.headers) {
           config.headers = new AxiosHeaders();
         } else if (!(config.headers instanceof AxiosHeaders)) {
@@ -74,16 +69,11 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-/**
- * Interceptor de RESPONSE:
- * - Manejo de errores de red (CORS / backend caído) con mensaje claro.
- * - Log de errores de API con método, url y payload de error.
- * - Si 401, limpiamos storage y redirigimos a /login.
- */
+/** Interceptor de RESPONSE: maneja errores de red y 401. */
 api.interceptors.response.use(
   (r) => r,
   (error: AxiosError<unknown>) => {
-    // Sin respuesta -> caída de red / CORS / DNS
+    // Sin respuesta -> red/CORS/DNS
     if (!error.response) {
       const url = `${error.config?.baseURL || ""}${error.config?.url || ""}`;
       console.error("❌ API Network Error:", {
@@ -96,7 +86,7 @@ api.interceptors.response.use(
           `No se pudo conectar con la API (${url}). ` +
             (useProxy
               ? "Revisa el proxy /api/proxy y que NEXT_PUBLIC_API_URL apunte bien."
-              : "Revisa CORS en el backend y que la URL sea accesible desde http://localhost:3000."),
+              : "Revisa CORS en el backend y que la URL sea accesible."),
         ),
       );
     }
@@ -120,12 +110,11 @@ api.interceptors.response.use(
       } catch {
         /* noop */
       }
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login";
-      }
+      // redirigir opcional:
+      // window.location.href = "/login";
     }
 
-    const msg = extractMessage(data) || `Error ${status}: ${statusText || "API"}`;
+    const msg = extractMessage(data) || `HTTP ${status} ${statusText || ""}`.trim();
     return Promise.reject(new Error(msg));
   },
 );
