@@ -8,7 +8,10 @@ import GoogleSignInButton from "@/components/GoogleSignInButton";
 import {
   registerUser,
   type RegisterInput,
+  loginUser,
   loginWithGoogle,
+  saveToken,
+  ensureDefaultRoleInvitado,
 } from "@/app/services/auth";
 
 /** Parser de errores de fetch/axios */
@@ -29,7 +32,6 @@ function isDomainAllowed(email: string): boolean {
     .split(",")
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean);
-
   if (!allowed.length) return true; // si no hay restricción, acepta todos
   const domain = email.split("@").pop()?.toLowerCase();
   return !!domain && allowed.includes(domain);
@@ -46,52 +48,41 @@ export default function RegisterPage() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    // ✅ Validaciones manuales en orden lógico
-    if (!nombre.trim()) {
-      toast.error("Por favor ingresa tu nombre");
-      return;
-    }
+    if (!nombre.trim()) return toast.error("Por favor ingresa tu nombre");
+    if (!email.trim()) return toast.error("Por favor ingresa tu correo");
 
-    if (!email.trim()) {
-      toast.error("Por favor ingresa tu correo");
-      return;
-    }
-
-    // Validar formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error("Por favor ingresa un correo válido");
-      return;
-    }
+    if (!emailRegex.test(email)) return toast.error("Por favor ingresa un correo válido");
 
-    if (!password) {
-      toast.error("Por favor ingresa una contraseña");
-      return;
-    }
-
-    if (password.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres");
-      return;
-    }
-
-    if (!isDomainAllowed(email)) {
-      toast.error("Dominio de correo no permitido");
-      return;
-    }
+    if (!password) return toast.error("Por favor ingresa una contraseña");
+    if (password.length < 6) return toast.error("La contraseña debe tener al menos 6 caracteres");
+    if (!isDomainAllowed(email)) return toast.error("Dominio de correo no permitido");
 
     setLoading(true);
     try {
-      const payload: RegisterInput = {
-        nombre: nombre.trim(),
+      // 🟦 el backend espera `username`, no `nombre`
+      const payload = {
+        username: nombre.trim(), // <--- ajuste clave aquí
         email: email.trim().toLowerCase(),
         password,
       };
-      await registerUser(payload);
-      toast.success("Cuenta creada exitosamente. Ahora inicia sesión.");
-      setNombre("");
-      setEmail("");
-      setPassword("");
-      router.push("/login");
+
+      // 1️⃣ crear usuario
+      await registerUser(payload as unknown as RegisterInput);
+
+      // 2️⃣ login
+      const { access_token } = await loginUser({
+        email: payload.email,
+        password: payload.password,
+      });
+
+      // 3️⃣ guardar token y asignar rol INVITADO (id=7)
+      localStorage.clear();
+      saveToken(access_token);
+      await ensureDefaultRoleInvitado(access_token);
+
+      toast.success("Cuenta creada");
+      router.push("/dashboard");
     } catch (err) {
       toast.error(parseError(err, "Error al registrar"));
     } finally {
@@ -102,9 +93,13 @@ export default function RegisterPage() {
   async function onGoogleSuccess(id_token: string) {
     try {
       setLoading(true);
-      const data = await loginWithGoogle(id_token);
-      localStorage.setItem("access_token", data.access_token);
-      toast.success("Cuenta creada con Google");
+
+      const { access_token } = await loginWithGoogle(id_token);
+      localStorage.clear();
+      saveToken(access_token);
+      await ensureDefaultRoleInvitado(access_token);
+
+      toast.success("Sesión iniciada con Google");
       router.push("/dashboard");
     } catch (err) {
       toast.error(parseError(err, "No se pudo registrar con Google"));
@@ -131,10 +126,10 @@ export default function RegisterPage() {
         )}
 
         <label className="block">
-          <span className="text-sm text-neutral-300">Nombre</span>
+          <span className="text-sm text-neutral-300">Nombre de usuario</span>
           <input
             className="mt-1 w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 outline-none focus:border-blue-500"
-            placeholder="Tu nombre"
+            placeholder="Nombre"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             disabled={loading}
@@ -204,6 +199,3 @@ export default function RegisterPage() {
     </main>
   );
 }
-
-
-
