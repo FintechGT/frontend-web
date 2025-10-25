@@ -2,7 +2,7 @@ import api from "@/lib/api";
 
 /** ====== Tipos ====== */
 export type RegisterInput = {
-  nombre: string;
+  username: string;   // el backend espera 'username'
   email: string;
   password: string;
 };
@@ -32,9 +32,11 @@ export type Me = {
   estadoActivo?: boolean;
 };
 
-// Alias
 export type User = Me;
 
+/* =========================
+   Mapeo de perfil
+========================= */
 function mapMe(raw: unknown): Me {
   const o = (raw ?? {}) as Record<string, unknown>;
   return {
@@ -57,17 +59,25 @@ function mapMe(raw: unknown): Me {
 ========================= */
 
 export async function registerUser(body: RegisterInput): Promise<UserResponse> {
-  const r = await api.post<UserResponse>("/auth/register", body);
+  const payload = {
+    username: String(body.username ?? "").normalize("NFKC").trim(),
+    email: String(body.email ?? "").normalize("NFKC").trim().toLowerCase(),
+    password: String(body.password ?? "").normalize("NFKC").trim(),
+  };
+  const r = await api.post<UserResponse>("/auth/register", payload);
   return r.data;
 }
 
 export async function loginUser(body: LoginInput): Promise<TokenResponse> {
-  const r = await api.post<TokenResponse>("/auth/login", body);
+  const payload = {
+    email: String(body.email ?? "").normalize("NFKC").trim().toLowerCase(),
+    password: String(body.password ?? "").normalize("NFKC").trim(),
+  };
+  const r = await api.post<TokenResponse>("/auth/login", payload);
   return r.data;
 }
 
 export async function loginWithGoogle(id_token: string): Promise<TokenResponse> {
-  // Si tu backend espera { id_token } por POST:
   const r = await api.post<TokenResponse>("/auth/google", { id_token });
   return r.data;
 }
@@ -101,17 +111,99 @@ export function clearToken(): void {
    Perfil
 ========================= */
 export async function getMe(token?: string): Promise<Me> {
-  if (!token && typeof window !== "undefined") {
-    token = getTokenFromClient() ?? undefined;
+  let t = token;
+  if (!t && typeof window !== "undefined") {
+    t = getTokenFromClient() ?? undefined;
   }
-  if (!token) throw new Error("No hay token de sesión");
+  if (!t) throw new Error("No hay token de sesión");
 
   const r = await api.get("/auth/me", {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${t}` },
   });
   return mapMe(r.data);
 }
 
 export async function getMeFromClient(): Promise<Me> {
   return getMe();
+}
+
+/* =========================
+   Roles (INVITADO)
+========================= */
+
+type RoleItem = {
+  ID_rol?: number;      // ← nombre correcto según tu API
+  nombre?: string;
+  clave?: string;
+};
+type RolesResponse = RoleItem[];
+
+/** GET roles del usuario (opcional para evitar duplicados) */
+async function getUserRoles(access_token: string, userId: number): Promise<RolesResponse> {
+  try {
+    const r = await api.get<RolesResponse>(`/usuarios/${userId}/roles`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+    return Array.isArray(r.data) ? r.data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** POST /usuarios/{id_usuario}/roles  body: { items: [7] } */
+async function assignRoleInvitado(access_token: string, userId: number): Promise<void> {
+  await api.post(
+    `/usuarios/${userId}/roles`,
+    { items: [7] },
+    { headers: { Authorization: `Bearer ${access_token}` } }
+  );
+}
+
+/** Idempotente: si ya tiene INVITADO no hace nada; si no, lo asigna */
+export async function ensureDefaultRoleInvitado(access_token: string): Promise<void> {
+  const me = await getMe(access_token);
+  const roles = await getUserRoles(access_token, me.idUsuario);
+
+  const hasInvitado =
+    roles.length > 0 &&
+    roles.some((r) => r.ID_rol === 7 || r.nombre?.toUpperCase() === "INVITADO" || r.clave?.toUpperCase() === "INVITADO");
+
+  if (!hasInvitado) {
+    try {
+      await assignRoleInvitado(access_token, me.idUsuario);
+    } catch {
+      // si la API devuelve conflicto por duplicado, lo ignoramos
+    }
+  }
+}
+
+/* =========================
+   Flujos compuestos
+========================= */
+
+/** Registrar → login → guardar token → asegurar rol INVITADO → devolver token */
+export async function registerThenLoginEnsureInvitado(
+  input: RegisterInput
+): Promise<TokenResponse> {
+  await registerUser(input);
+
+  const { access_token } = await loginUser({
+    email: input.email,
+    password: input.password,
+  });
+
+  saveToken(access_token);
+  await ensureDefaultRoleInvitado(access_token);
+
+  return { access_token, token_type: "bearer" };
+}
+
+/** Google → guardar token → asegurar rol INVITADO → devolver token */
+export async function loginWithGoogleEnsureInvitado(
+  id_token: string
+): Promise<TokenResponse> {
+  const { access_token } = await loginWithGoogle(id_token);
+  saveToken(access_token);
+  await ensureDefaultRoleInvitado(access_token);
+  return { access_token, token_type: "bearer" };
 }
