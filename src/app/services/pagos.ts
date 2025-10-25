@@ -1,4 +1,3 @@
-// src/app/services/pagos.ts
 import { getTokenFromClient } from "./auth";
 
 /* =========================
@@ -12,32 +11,63 @@ function authHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+/* ========= Helpers de parsing / errores ========= */
+
+type FastApiErrorItem = {
+  loc?: unknown;
+  msg?: string;
+  message?: string;
+};
+
+function isString(v: unknown): v is string {
+  return typeof v === "string";
+}
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
 /** Intenta extraer un mensaje de error legible desde payloads desconocidos */
 function extractApiMessage(data: unknown): string | undefined {
-  if (typeof data === "string") return data;
+  if (isString(data)) return data;
 
   if (data && typeof data === "object") {
     const rec = data as Record<string, unknown>;
 
     // FastAPI: detail como string
-    if (typeof rec.detail === "string" && rec.detail.trim()) return rec.detail as string;
+    if (isNonEmptyString(rec.detail)) return rec.detail;
 
     // FastAPI: detail como lista de errores
     if (Array.isArray(rec.detail) && rec.detail.length > 0) {
       try {
-        const parts = (rec.detail as any[])
-          .map((e) => {
-            const loc = Array.isArray(e?.loc) ? e.loc.join(".") : "";
-            const msg = e?.msg ?? e?.message ?? "";
-            return loc ? `${loc}: ${msg}` : String(msg);
+        const items: unknown[] = rec.detail as unknown[];
+        const parts = items
+          .map((raw) => {
+            const e = raw as FastApiErrorItem;
+            const locArr = Array.isArray(e?.loc) ? (e.loc as unknown[]) : [];
+            const loc = locArr
+              .map((p) => (typeof p === "string" || typeof p === "number" ? String(p) : ""))
+              .filter((s) => s !== "")
+              .join(".");
+
+            const msg = isNonEmptyString(e?.msg)
+              ? e.msg!
+              : isNonEmptyString(e?.message)
+              ? e.message!
+              : "";
+
+            const line = (loc ? `${loc}: ` : "") + msg;
+            return line.trim();
           })
-          .filter(Boolean);
+          .filter(isNonEmptyString);
+
         if (parts.length) return parts.join(" · ");
-      } catch { /* noop */ }
+      } catch {
+        /* noop */
+      }
     }
 
     // Campo message genérico
-    if (typeof rec.message === "string" && rec.message.trim()) return rec.message as string;
+    if (isNonEmptyString(rec.message)) return rec.message;
   }
   return undefined;
 }
