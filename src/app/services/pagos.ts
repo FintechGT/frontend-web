@@ -15,12 +15,29 @@ function authHeaders(): Record<string, string> {
 /** Intenta extraer un mensaje de error legible desde payloads desconocidos */
 function extractApiMessage(data: unknown): string | undefined {
   if (typeof data === "string") return data;
+
   if (data && typeof data === "object") {
     const rec = data as Record<string, unknown>;
-    const detail = rec.detail;
-    if (typeof detail === "string" && detail.trim()) return detail;
-    const message = rec.message;
-    if (typeof message === "string" && message.trim()) return message;
+
+    // FastAPI: detail como string
+    if (typeof rec.detail === "string" && rec.detail.trim()) return rec.detail as string;
+
+    // FastAPI: detail como lista de errores
+    if (Array.isArray(rec.detail) && rec.detail.length > 0) {
+      try {
+        const parts = (rec.detail as any[])
+          .map((e) => {
+            const loc = Array.isArray(e?.loc) ? e.loc.join(".") : "";
+            const msg = e?.msg ?? e?.message ?? "";
+            return loc ? `${loc}: ${msg}` : String(msg);
+          })
+          .filter(Boolean);
+        if (parts.length) return parts.join(" · ");
+      } catch { /* noop */ }
+    }
+
+    // Campo message genérico
+    if (typeof rec.message === "string" && rec.message.trim()) return rec.message as string;
   }
   return undefined;
 }
@@ -179,7 +196,6 @@ export type ValidarPagoResponse = {
   ok?: boolean;
   id_pago?: number;
   estado?: string;
-  // permitir campos adicionales del backend sin usar `any`
   [key: string]: unknown;
 };
 
@@ -194,4 +210,20 @@ export async function validarPago<T = ValidarPagoResponse>(
     body: JSON.stringify({ nota: nota ?? "Validado desde panel" }),
   });
   return parseJson<T>(res);
+}
+
+/** Crear pago por el cliente (queda pendiente) */
+export async function crearPago(data: {
+  id_prestamo: number;
+  monto: number;
+  medio_pago: string;
+  ref_bancaria: string;
+  comprobante_url?: string | null;
+}): Promise<PagoItem> {
+  const res = await fetch(`${API_BASE}/crear-pagos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  return parseJson<PagoItem>(res);
 }
